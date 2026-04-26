@@ -45,4 +45,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const result = await this.redisClient.exists(key);
     return result === 1;
   }
+
+  async zadd(key: string, score: number, member: string): Promise<void> {
+    await this.redisClient.zadd(key, score, member);
+  }
+
+  async zrange(key: string, start: number, stop: number, order: 'ASC' | 'REV' = 'ASC'): Promise<string[]> {
+    if (order === 'REV') {
+      return this.redisClient.zrange(key, start, stop, 'REV');
+    }
+    return this.redisClient.zrange(key, start, stop);
+  }
+
+  async zrem(key: string, member: string): Promise<void> {
+    await this.redisClient.zrem(key, member);
+  }
 }

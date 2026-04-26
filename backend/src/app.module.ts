@@ -4,10 +4,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
+import { VideosModule } from './videos/videos.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
-  imports: [RedisModule, AuthModule],
+  imports: [RedisModule, AuthModule, VideosModule],
   controllers: [AppController],
   providers: [
     AppService,
