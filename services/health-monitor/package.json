@@ -1,0 +1,19 @@
+{
+  "name": "health-monitor",
+  "version": "1.0.0",
+  "description": "Health monitor — polls all nodes every 5s, writes state to Redis",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2",
+    "axios": "^1.7.2",
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

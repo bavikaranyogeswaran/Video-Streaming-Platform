@@ -1,0 +1,246 @@
+version: '3.8'
+
+services:
+
+  # ────────────────────────────────────────────────────────────────
+  # NGINX — Load Balancer & Reverse Proxy (port 80)
+  # ────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: vsp-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - streaming-1
+      - streaming-2
+      - streaming-3
+      - frontend
+    restart: always
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
+  # REDIS — Metadata Cache + Health State (AOF persistent)
+  # ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: vsp-redis
+    command: redis-server --appendonly yes --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: always
+    networks:
+      - vsp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────────────────────────────────────
+  # BACKEND — NestJS + TypeScript API Gateway (port 3000)
+  # ────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vsp-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=vsp_super_secret_jwt_key_change_in_prod_2024
+      - JWT_EXPIRES_IN=24h
+      - STORAGE_NODE_A=http://storage-node-a:4001
+      - STORAGE_NODE_B=http://storage-node-b:4001
+      - STORAGE_NODE_C=http://storage-node-c:4001
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
+  # STREAMING SERVICE — 3 Replicas (Round-Robin via Nginx)
+  # ────────────────────────────────────────────────────────────────
+  streaming-1:
+    build:
+      context: ./services/streaming-service
+      dockerfile: Dockerfile
+    container_name: vsp-streaming-1
+    ports:
+      - "3001:3001"
+    environment:
+      - REPLICA_ID=1
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_NODE_A=http://storage-node-a:4001
+      - STORAGE_NODE_B=http://storage-node-b:4001
+      - STORAGE_NODE_C=http://storage-node-c:4001
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - vsp-network
+
+  streaming-2:
+    build:
+      context: ./services/streaming-service
+      dockerfile: Dockerfile
+    container_name: vsp-streaming-2
+    ports:
+      - "3002:3001"
+    environment:
+      - REPLICA_ID=2
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_NODE_A=http://storage-node-a:4001
+      - STORAGE_NODE_B=http://storage-node-b:4001
+      - STORAGE_NODE_C=http://storage-node-c:4001
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - vsp-network
+
+  streaming-3:
+    build:
+      context: ./services/streaming-service
+      dockerfile: Dockerfile
+    container_name: vsp-streaming-3
+    ports:
+      - "3003:3001"
+    environment:
+      - REPLICA_ID=3
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_NODE_A=http://storage-node-a:4001
+      - STORAGE_NODE_B=http://storage-node-b:4001
+      - STORAGE_NODE_C=http://storage-node-c:4001
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
+  # STORAGE NODES — Distributed Video Storage (3 nodes)
+  # Node A = Asia | Node B = EU | Node C = US
+  # ────────────────────────────────────────────────────────────────
+  storage-node-a:
+    build:
+      context: ./services/storage-node
+      dockerfile: Dockerfile
+    container_name: vsp-storage-a
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ID=A
+      - NODE_LABEL=Asia
+      - PORT=4001
+    volumes:
+      - storage-a:/videos
+    restart: always
+    networks:
+      - vsp-network
+
+  storage-node-b:
+    build:
+      context: ./services/storage-node
+      dockerfile: Dockerfile
+    container_name: vsp-storage-b
+    ports:
+      - "4002:4001"
+    environment:
+      - NODE_ID=B
+      - NODE_LABEL=EU
+      - PORT=4001
+    volumes:
+      - storage-b:/videos
+    restart: always
+    networks:
+      - vsp-network
+
+  storage-node-c:
+    build:
+      context: ./services/storage-node
+      dockerfile: Dockerfile
+    container_name: vsp-storage-c
+    ports:
+      - "4003:4001"
+    environment:
+      - NODE_ID=C
+      - NODE_LABEL=US
+      - PORT=4001
+    volumes:
+      - storage-c:/videos
+    restart: always
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
+  # HEALTH MONITOR — Polls all nodes every 5s → Redis
+  # ────────────────────────────────────────────────────────────────
+  health-monitor:
+    build:
+      context: ./services/health-monitor
+      dockerfile: Dockerfile
+    container_name: vsp-health-monitor
+    ports:
+      - "5000:5000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STREAMING_NODES=http://streaming-1:3001,http://streaming-2:3001,http://streaming-3:3001
+      - STORAGE_NODES=http://storage-node-a:4001,http://storage-node-b:4001,http://storage-node-c:4001
+      - POLL_INTERVAL=5000
+      - PORT=5000
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
+  # FRONTEND — React + TypeScript (Vite dev server)
+  # ────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vsp-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost/api
+      - VITE_STREAM_URL=http://localhost/stream
+    restart: always
+    networks:
+      - vsp-network
+
+# ────────────────────────────────────────────────────────────────
+# NETWORKS
+# ────────────────────────────────────────────────────────────────
+networks:
+  vsp-network:
+    driver: bridge
+
+# ────────────────────────────────────────────────────────────────
+# VOLUMES (persistent across container restarts)
+# ────────────────────────────────────────────────────────────────
+volumes:
+  redis-data:      # Redis AOF data
+  storage-a:       # Storage Node A (Asia) videos
+  storage-b:       # Storage Node B (EU) videos
+  storage-c:       # Storage Node C (US) videos

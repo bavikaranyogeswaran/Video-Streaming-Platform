@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Docker volumes (local)
+shared/videos/*
+!shared/videos/.gitkeep
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
