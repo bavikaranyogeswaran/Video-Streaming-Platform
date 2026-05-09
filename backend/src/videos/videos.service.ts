@@ -67,4 +67,12 @@ export class VideosService {
        await this.redisService.zrem('videos:index', id);
     }
   }
+
+  async updateStatus(id: string, status: 'processing' | 'ready' | 'error', hlsPath?: string): Promise<void> {
+    const videoKey = `video:${id}`;
+    await this.redisService.hset(videoKey, 'status', status);
+    if (hlsPath) {
+      await this.redisService.hset(videoKey, 'hlsPath', hlsPath);
+    }
+  }
 }
