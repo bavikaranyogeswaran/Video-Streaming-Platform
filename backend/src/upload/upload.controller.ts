@@ -1,15 +1,26 @@
+// =================================================================================
+// UPLOAD CONTROLLER (The Ingestion Entry Point)
+// =================================================================================
+// This controller handles multi-part video uploads.
+// It performs initial payload validation and delegates processing
+// to the HLS transcoding and replication services.
+// =================================================================================
+
 import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { UploadService } from './upload.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import * as path from 'path';
 
 @ApiTags('Upload')
 @Controller('upload')
 @ApiBearerAuth()
 export class UploadController {
+  // [NESTJS] Dependency Injection for core upload logic
   constructor(private readonly uploadService: UploadService) {}
 
+  // UPLOAD VIDEO: Endpoint to receive and process new video files
   @Post()
   @ApiOperation({ summary: 'Upload an MP4 video for HLS transcoding' })
   @ApiConsumes('multipart/form-data')
@@ -32,19 +43,21 @@ export class UploadController {
     @Body('title') title: string,
     @CurrentUser() user: any,
   ) {
+    // 1. [VALIDATION] Check if file exists in the multipart request
     if (!file) {
       throw new BadRequestException('Video file is required');
     }
     
-    // Simple validation for MP4/MKV/AVI
+    // 2. [VALIDATION] File extension whitelist check
+    // Restricts uploads to supported container formats for FFmpeg
     const allowedExtensions = ['.mp4', '.mkv', '.avi'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
        throw new BadRequestException('Invalid file type. Only MP4, MKV, and AVI are allowed.');
     }
 
+    // 3. [SIDE EFFECT] Delegate business logic to UploadService
+    // Passes authenticated username to track ownership in Redis
     return this.uploadService.processVideo(file, title, user.username);
   }
 }
-
-import * as path from 'path';

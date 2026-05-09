@@ -1,27 +1,35 @@
+// =================================================================================
+// VIDEO RESPONSE DTO (The Data Transfer Contract)
+// =================================================================================
+// This DTO defines the structured response for video metadata.
+// It ensures consistent schema delivery for the frontend player
+// and Swagger API documentation.
+// =================================================================================
+
 import { ApiProperty } from '@nestjs/swagger';
 
 export class VideoResponseDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Unique identifier for the video' })
   id: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Title of the video' })
   title: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Optional detailed description' })
   description?: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Username of the uploader' })
   uploadedBy: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Public path to the HLS playlist (.m3u8)' })
   hlsPath?: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'List of storage nodes hosting this video' })
   storageNodes: string[];
 
-  @ApiProperty()
+  @ApiProperty({ description: 'ISO timestamp of record creation' })
   createdAt: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Current processing lifecycle state' })
   status: 'processing' | 'ready' | 'error';
 }
