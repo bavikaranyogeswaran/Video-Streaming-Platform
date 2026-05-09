@@ -1,15 +1,19 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import ffmpeg from 'fluent-ffmpeg';
 import * as path from 'path';
 import * as fs from 'fs';
 import { VideosService } from '../videos/videos.service';
+import { ReplicationService } from './replication.service';
 
 @Injectable()
 export class UploadService {
   private readonly logger = new Logger(UploadService.name);
   private readonly uploadDir = '/tmp/uploads';
 
-  constructor(private readonly videosService: VideosService) {
+  constructor(
+    private readonly videosService: VideosService,
+    private readonly replicationService: ReplicationService,
+  ) {
     if (!fs.existsSync(this.uploadDir)) {
       fs.mkdirSync(this.uploadDir, { recursive: true });
     }
@@ -55,14 +59,17 @@ export class UploadService {
       .on('end', async () => {
         this.logger.log(`Transcoding finished for video: ${videoId}`);
         
-        // Update status in Redis
-        // Note: In Day 5 we will move these files to storage nodes.
-        // For now, we mark as ready and point to the temp path.
-        await this.videosService.updateStatus(videoId, 'ready', `/tmp/uploads/${videoId}/playlist.m3u8`);
+        // 3. Replicate to storage nodes
+        const nodes = await this.replicationService.replicate(videoId, outputDir);
         
-        // Cleanup input file
-        if (fs.existsSync(inputPath)) {
-          fs.unlinkSync(inputPath);
+        // Update status and storage nodes in Redis
+        await this.videosService.setStorageNodes(videoId, nodes);
+        await this.videosService.updateStatus(videoId, 'ready', `/stream/${videoId}/playlist.m3u8`);
+        
+        // Cleanup local files
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        if (fs.existsSync(outputDir)) {
+          fs.rmSync(outputDir, { recursive: true, force: true });
         }
       })
       .on('error', async (err: Error) => {

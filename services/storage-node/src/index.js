@@ -50,6 +50,34 @@ app.get('/files/:videoId/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// ── Store a file ────────────────────────────────────────────────
+const multer = require('multer');
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const videoId = req.body.videoId;
+    const dir = path.join(VIDEO_DIR, videoId);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname);
+  },
+});
+const upload = multer({ storage });
+
+app.post('/store', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  res.json({
+    message: 'File stored successfully',
+    nodeId: NODE_ID,
+    path: req.file.path,
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`💾 Storage Node [${NODE_ID} — ${NODE_LABEL}] listening on port ${PORT}`);
 });

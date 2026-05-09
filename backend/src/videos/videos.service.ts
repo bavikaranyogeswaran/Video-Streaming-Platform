@@ -75,4 +75,9 @@ export class VideosService {
       await this.redisService.hset(videoKey, 'hlsPath', hlsPath);
     }
   }
+
+  async setStorageNodes(id: string, nodes: string[]): Promise<void> {
+    const videoKey = `video:${id}`;
+    await this.redisService.hset(videoKey, 'storageNodes', JSON.stringify(nodes));
+  }
 }
