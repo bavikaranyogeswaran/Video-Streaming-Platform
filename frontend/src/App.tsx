@@ -9,6 +9,7 @@ const LoginPage = React.lazy(() => import('./pages/LoginPage.tsx'));
 const RegisterPage = React.lazy(() => import('./pages/RegisterPage.tsx'));
 const UploadPage = React.lazy(() => import('./pages/UploadPage.tsx'));
 const VideoPage = React.lazy(() => import('./pages/VideoPage.tsx'));
+const HealthPage = React.lazy(() => import('./pages/HealthPage.tsx'));
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { token } = useAuthStore();
@@ -28,6 +29,7 @@ const App: React.FC = () => {
           <Route path="/" element={<Layout />}>
             <Route index element={<HomePage />} />
             <Route path="video/:id" element={<VideoPage />} />
+            <Route path="health" element={<HealthPage />} />
             <Route 
               path="upload" 
               element={

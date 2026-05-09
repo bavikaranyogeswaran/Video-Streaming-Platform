@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
-import { Play, Upload, User, LogOut, Search } from 'lucide-react';
+import { Play, Upload, User, LogOut, Search, Activity } from 'lucide-react';
 import { useAuthStore } from '../store/authStore.ts';
 
 export const Layout: React.FC = () => {
@@ -37,6 +37,10 @@ export const Layout: React.FC = () => {
         <nav className="flex items-center gap-4">
           {user ? (
             <>
+              <Link to="/health" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors mr-2">
+                <Activity className="w-4 h-4 text-emerald-500 animate-pulse" />
+                <span className="text-sm font-medium">Health</span>
+              </Link>
               <Link to="/upload" className="btn-primary py-1.5 px-4 text-sm hidden sm:flex">
                 <Upload className="w-4 h-4" />
                 Upload
