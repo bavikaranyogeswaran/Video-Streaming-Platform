@@ -16,4 +16,9 @@ export const healthService = {
     const response = await axios.get<NodeHealth[]>(`${HEALTH_URL}/nodes`);
     return response.data;
   },
+
+  simulateNode: async (nodeId: string, status: 'up' | 'down' | 'reset', latencyMs?: number) => {
+    const response = await axios.post(`${HEALTH_URL}/simulate`, { nodeId, status, latencyMs });
+    return response.data;
+  },
 };

@@ -119,3 +119,20 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+@keyframes flow-right {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-flow-right {
+  animation: flow-right 3s infinite linear;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 12s infinite linear;
+}

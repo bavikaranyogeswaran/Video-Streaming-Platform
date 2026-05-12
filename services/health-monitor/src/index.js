@@ -36,16 +36,32 @@ const allNodes = [
   ...storageNodes.map((url, i) => ({ url, id: `storage-${['A','B','C'][i] || i}`, type: 'storage' })),
 ];
 
+// Simulation state to override real health checks
+const simulations = {};
+
 // CHECK NODE: Probes a single node and persists its availability status
 async function checkNode(node) {
   const start = Date.now();
+  
+  // 0. [SIMULATION] Check for manual overrides
+  if (simulations[node.id]) {
+    const sim = simulations[node.id];
+    const health = { 
+      status: sim.status, 
+      latencyMs: sim.latencyMs || (sim.status === 'up' ? 20 : -1), 
+      lastChecked: new Date().toISOString(),
+      simulated: true
+    };
+    await redis.hset(`node:health:${node.id}`, health);
+    return { ...node, ...health };
+  }
+
   try {
     // 1. [SIDE EFFECT] Outbound health probe with strict timeout
     await axios.get(`${node.url}/health`, { timeout: 3000 });
     const latencyMs = Date.now() - start;
     
     // 2. [DB] Persist 'up' status and latency metrics to Redis
-    // [DB] HSET node:health:{id} -> {status, latency, timestamp}
     const health = { status: 'up', latencyMs, lastChecked: new Date().toISOString() };
     await redis.hset(`node:health:${node.id}`, health);
     return { ...node, ...health };
@@ -57,6 +73,23 @@ async function checkNode(node) {
     return { ...node, ...health };
   }
 }
+
+// SIMULATE: Allows the frontend/admin to force a node into a specific state
+app.post('/health/simulate', (req, res) => {
+  const { nodeId, status, latencyMs } = req.body;
+  
+  if (!nodeId) return res.status(400).json({ error: 'nodeId required' });
+  
+  if (status === 'reset') {
+    delete simulations[nodeId];
+    console.log(`🔄 Simulation reset for ${nodeId}`);
+  } else {
+    simulations[nodeId] = { status, latencyMs };
+    console.log(`🎭 Simulation set for ${nodeId}: ${status} (${latencyMs}ms)`);
+  }
+  
+  res.json({ success: true, simulations });
+});
 
 // POLL ALL: Orchestrates the global heartbeat check
 async function pollAll() {
