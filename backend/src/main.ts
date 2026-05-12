@@ -9,11 +9,26 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { WinstonModule } from 'nest-winston';
+import * as winston from 'winston';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  // 1. [SIDE EFFECT] Create the core application instance
-  const app = await NestFactory.create(AppModule);
+  // 1. [SIDE EFFECT] Create the core application instance with Structured Winston Logger
+  // Why: Enables machine-readable logs (JSON) for centralized monitoring (ELK/Grafana)
+  const app = await NestFactory.create(AppModule, {
+    logger: WinstonModule.createLogger({
+      transports: [
+        new winston.transports.Console({
+          format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.ms(),
+            winston.format.json(), // Production-ready JSON format
+          ),
+        }),
+      ],
+    }),
+  });
   const logger = new Logger('Bootstrap');
 
   // 2. [SIDE EFFECT] Set global API routing prefix

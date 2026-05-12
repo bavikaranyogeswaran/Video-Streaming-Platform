@@ -104,6 +104,10 @@ app.post('/store', upload.single('file'), (req: Request, res: Response) => {
 const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
 const INTERNAL_URL = process.env.INTERNAL_URL || `http://storage-node-${NODE_ID.toLowerCase()}:${PORT}`;
 
+import logger from './logger.js';
+
+// ... (existing code remains same)
+
 async function registerNode() {
   try {
     const nodeKey = `vsp:node:${NODE_ID}`;
@@ -115,33 +119,30 @@ async function registerNode() {
       registeredAt: new Date().toISOString()
     };
     
-    // 1. [DB] Upsert node metadata
     await redis.hset(nodeKey, payload);
-    // 2. [DB] Add to the global storage registry set
     await redis.sadd('vsp:registry:storage', NODE_ID);
     
-    console.log(`📡 Registered as ${NODE_ID} at ${INTERNAL_URL}`);
+    logger.info(`📡 Registered as ${NODE_ID} at ${INTERNAL_URL}`, { nodeId: NODE_ID, url: INTERNAL_URL });
   } catch (err: any) {
-    console.error('❌ Failed to register node in discovery service:', err.message);
+    logger.error('❌ Failed to register node in discovery service:', { error: err.message });
   }
 }
 
 async function unregisterNode() {
   try {
     await redis.srem('vsp:registry:storage', NODE_ID);
-    console.log(`👋 Unregistered ${NODE_ID} from discovery service`);
+    logger.info(`👋 Unregistered ${NODE_ID} from discovery service`, { nodeId: NODE_ID });
   } catch (err: any) {
-    console.error('❌ Deregistration failed:', err.message);
+    logger.error('❌ Deregistration failed:', { error: err.message });
   } finally {
     process.exit(0);
   }
 }
 
-// Handle graceful shutdown
 process.on('SIGTERM', unregisterNode);
 process.on('SIGINT', unregisterNode);
 
 app.listen(PORT, async () => {
-  console.log(`💾 Storage Node [${NODE_ID} — ${NODE_LABEL}] listening on port ${PORT}`);
+  logger.info(`💾 Storage Node [${NODE_ID} — ${NODE_LABEL}] listening on port ${PORT}`);
   await registerNode();
 });

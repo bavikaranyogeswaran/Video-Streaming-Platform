@@ -6,7 +6,7 @@
 // global security context via the JWT Auth Guard.
 // =================================================================================
 
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
 import { VideosModule } from './videos/videos.module';
 import { UploadModule } from './upload/upload.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
   // [NESTJS] Aggregation of core infrastructure and business features
@@ -54,4 +55,11 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // [OBSERVABILITY] Global Middleware Registry
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RequestIdMiddleware)
+      .forRoutes('*'); // Apply correlation IDs to every single endpoint
+  }
+}

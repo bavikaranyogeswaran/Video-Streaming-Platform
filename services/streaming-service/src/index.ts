@@ -14,6 +14,7 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import NodeCache from 'node-cache';
 import CircuitBreaker from 'opossum';
+import logger from './logger.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +23,14 @@ const REPLICA_ID = process.env.REPLICA_ID || '?';
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+
+// 0. [OBSERVABILITY] Request Tracing Middleware
+// Why: Captures Correlation IDs from the backend and includes them in all logs
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const requestId = req.headers['x-request-id'] || 'internal';
+  req.requestId = requestId as string;
+  next();
+});
 
 // 1. [SIDE EFFECT] Middleware to attach replica identity to responses
 // Useful for debugging load balancer distribution in the browser
@@ -52,7 +61,7 @@ app.get('/health', (req: Request, res: Response) => {
            (error.response && error.response.status >= 500);
   },
   onRetry: (retryCount: number, error: any, requestConfig: any) => {
-    console.warn(`🔄 Retrying request to ${requestConfig.url} (Attempt ${retryCount})`);
+    logger.warn(`🔄 Retrying request to ${requestConfig.url} (Attempt ${retryCount})`, { retryCount, url: requestConfig.url });
   }
 });
 
@@ -81,9 +90,9 @@ function getBreaker(nodeLabel: string) {
       });
     }, options);
 
-    breaker.on('open', () => console.warn(`🚨 Circuit OPEN for Node ${nodeLabel}`));
-    breaker.on('close', () => console.log(`✅ Circuit CLOSED for Node ${nodeLabel}`));
-    breaker.on('halfOpen', () => console.log(`🛠️ Circuit HALF-OPEN for Node ${nodeLabel}`));
+    breaker.on('open', () => logger.warn(`🚨 Circuit OPEN for Node ${nodeLabel}`));
+    breaker.on('close', () => logger.info(`✅ Circuit CLOSED for Node ${nodeLabel}`));
+    breaker.on('halfOpen', () => logger.info(`🛠️ Circuit HALF-OPEN for Node ${nodeLabel}`));
 
     breakers[nodeLabel] = breaker;
   }
@@ -166,7 +175,7 @@ app.get('/stream/:videoId/:filename', async (req: Request, res: Response) => {
     response.data.pipe(res);
 
   } catch (err: any) {
-    console.error(`Streaming error for ${videoId}:`, err.message);
+    logger.error(`Streaming error for ${videoId}: ${err.message}`, { videoId, error: err.message });
     // If the circuit was opened by this error, we might want to return 503
     res.status(err.code === 'EOPENBREAKER' ? 503 : 500).json({ 
       error: 'Failed to stream video chunk',
@@ -191,18 +200,18 @@ async function registerService() {
     await redis.hset(nodeKey, payload);
     await redis.sadd('vsp:registry:streaming', `streaming-${REPLICA_ID}`);
     
-    console.log(`📡 Registered Streaming Replica ${REPLICA_ID} at ${INTERNAL_URL}`);
+    logger.info(`📡 Registered Streaming Replica ${REPLICA_ID} at ${INTERNAL_URL}`);
   } catch (err: any) {
-    console.error('❌ Failed to register streaming service:', err.message);
+    logger.error('❌ Failed to register streaming service:', { error: err.message });
   }
 }
 
 async function unregisterService() {
   try {
     await redis.srem('vsp:registry:streaming', `streaming-${REPLICA_ID}`);
-    console.log(`👋 Unregistered Streaming Replica ${REPLICA_ID}`);
+    logger.info(`👋 Unregistered Streaming Replica ${REPLICA_ID}`);
   } catch (err: any) {
-    console.error('❌ Deregistration failed:', err.message);
+    logger.error('❌ Deregistration failed:', { error: err.message });
   } finally {
     process.exit(0);
   }
@@ -212,6 +221,6 @@ process.on('SIGTERM', unregisterService);
 process.on('SIGINT', unregisterService);
 
 app.listen(PORT, async () => {
-  console.log(`🎬 Streaming Service [Replica ${REPLICA_ID}] listening on port ${PORT}`);
+  logger.info(`🎬 Streaming Service [Replica ${REPLICA_ID}] listening on port ${PORT}`);
   await registerService();
 });
