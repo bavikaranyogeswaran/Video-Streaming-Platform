@@ -1,4 +1,5 @@
 import winston from 'winston';
+import 'winston-daily-rotate-file';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -7,7 +8,15 @@ const logger = winston.createLogger({
     winston.format.json()
   ),
   transports: [
-    new winston.transports.Console()
+    new winston.transports.Console(),
+    // [OBSERVABILITY] Rotate logs daily to prevent disk pressure
+    new winston.transports.DailyRotateFile({
+      filename: 'logs/streaming-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '10m',
+      maxFiles: '7d', // Shorter retention for high-volume streaming logs
+    }),
   ],
 });
 

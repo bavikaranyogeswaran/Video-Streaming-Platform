@@ -11,6 +11,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { WinstonModule } from 'nest-winston';
 import * as winston from 'winston';
+import 'winston-daily-rotate-file';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -23,7 +24,20 @@ async function bootstrap() {
           format: winston.format.combine(
             winston.format.timestamp(),
             winston.format.ms(),
-            winston.format.json(), // Production-ready JSON format
+            winston.format.json(), 
+          ),
+        }),
+        // 1.1 [OBSERVABILITY] Persistent Log Rotation
+        // Why: Prevents disk exhaustion by rotating logs daily and keeping a 14-day history
+        new winston.transports.DailyRotateFile({
+          filename: 'logs/backend-%DATE%.log',
+          datePattern: 'YYYY-MM-DD',
+          zippedArchive: true,
+          maxSize: '20m',
+          maxFiles: '14d',
+          format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.json()
           ),
         }),
       ],
