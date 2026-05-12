@@ -39,11 +39,41 @@ app.get('/health', (req, res) => {
 const Redis = require('ioredis');
 const axios = require('axios');
 const NodeCache = require('node-cache');
+const CircuitBreaker = require('opossum');
 
 // [PERFORMANCE] Multi-tier in-memory cache
-// - Metadata: 60s (Slow changing)
-// - Health: 2s (Fast changing)
 const localCache = new NodeCache({ stdTTL: 60, checkperiod: 70 });
+
+// [RESILIENCE] Circuit Breaker Registry
+// Why: Prevents cascading failures if a specific storage node is slow or intermittent.
+const breakers = {};
+
+function getBreaker(nodeLabel) {
+  if (!breakers[nodeLabel]) {
+    const options = {
+      timeout: 5000, // If the proxy takes longer than 5s, count as failure
+      errorThresholdPercentage: 50, // Open circuit if 50% of requests fail
+      resetTimeout: 10000 // Wait 10s before trying again
+    };
+
+    // The action is a simple axios request wrapped in a promise
+    const breaker = new CircuitBreaker(async (url) => {
+      return axios({
+        method: 'get',
+        url,
+        responseType: 'stream',
+        timeout: 5000,
+      });
+    }, options);
+
+    breaker.on('open', () => console.warn(`🚨 Circuit OPEN for Node ${nodeLabel}`));
+    breaker.on('close', () => console.log(`✅ Circuit CLOSED for Node ${nodeLabel}`));
+    breaker.on('halfOpen', () => console.log(`🛠️ Circuit HALF-OPEN for Node ${nodeLabel}`));
+
+    breakers[nodeLabel] = breaker;
+  }
+  return breakers[nodeLabel];
+}
 
 // [DB] Persistent connection to the distributed metadata store
 const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
@@ -66,26 +96,18 @@ app.get('/stream/:videoId/:filename', async (req, res) => {
     let video = localCache.get(videoKey);
     
     if (!video) {
-      // 2. [DB] Cache miss: Fetch video metadata from Redis
       video = await redis.hgetall(videoKey);
-      if (video && video.id) {
-        localCache.set(videoKey, video);
-      }
+      if (video && video.id) localCache.set(videoKey, video);
     } else {
       cacheHit = true;
     }
 
-    if (!video || !video.id) {
-      return res.status(404).json({ error: 'Video not found' });
-    }
+    if (!video || !video.id) return res.status(404).json({ error: 'Video not found' });
 
-    // 3. [VALIDATION] Verify that replication has occurred
     const storageNodes = JSON.parse(video.storageNodes || '[]');
-    if (storageNodes.length === 0) {
-      return res.status(503).json({ error: 'Video segments not yet replicated' });
-    }
+    if (storageNodes.length === 0) return res.status(503).json({ error: 'Video segments not yet replicated' });
 
-    // 4. [PERFORMANCE] Health caching: Reuse health status for 2 seconds
+    // 2. [PERFORMANCE] Health caching: Reuse health status for 2 seconds
     const healthCacheKey = 'global:node:health';
     let healthChecks = localCache.get(healthCacheKey);
 
@@ -96,42 +118,44 @@ app.get('/stream/:videoId/:filename', async (req, res) => {
           return { nodeId, status: health.status || 'up' }; 
         })
       );
-      localCache.set(healthCacheKey, healthChecks, 2); // 2 second TTL
+      localCache.set(healthCacheKey, healthChecks, 2);
     }
 
+    // 3. [RESILIENCE] Filter by both Health Monitor AND local Circuit Breaker
     const healthyNodes = healthChecks
-      .filter(h => h.status === 'up')
+      .filter(h => {
+        const breaker = getBreaker(h.nodeId);
+        return h.status === 'up' && !breaker.opened;
+      })
       .map(h => h.nodeId);
 
-    // 4. [PERFORMANCE] Smart replica selection
-    // Favor healthy nodes; fallback to all replicas if none are marked 'up'
     const nodesToPickFrom = healthyNodes.length > 0 ? healthyNodes : storageNodes;
     const nodeLabel = nodesToPickFrom[Math.floor(Math.random() * nodesToPickFrom.length)];
     const storageUrl = STORAGE_MAP[nodeLabel];
 
-    if (!storageUrl) {
-      return res.status(500).json({ error: `Storage node ${nodeLabel} not configured` });
-    }
+    if (!storageUrl) return res.status(500).json({ error: `Storage node ${nodeLabel} not configured` });
 
-    // 5. [SIDE EFFECT] Proxy the stream request to the chosen storage node
+    // 4. [RESILIENCE] Execute request through Circuit Breaker
     const targetUrl = `${storageUrl}/files/${videoId}/${filename}`;
-    const response = await axios({
-      method: 'get',
-      url: targetUrl,
-      responseType: 'stream',
-      timeout: 5000,
-    });
+    const breaker = getBreaker(nodeLabel);
 
-    // 6. [SIDE EFFECT] Pipe the storage node's binary data directly to the client
+    const response = await breaker.fire(targetUrl);
+
+    // 5. [SIDE EFFECT] Pipe the storage node's binary data directly to the client
     res.setHeader('X-Proxy-Node', nodeLabel);
     res.setHeader('X-Metadata-Cache', cacheHit ? 'HIT' : 'MISS');
+    res.setHeader('X-Circuit-State', breaker.opened ? 'OPEN' : 'CLOSED');
     res.setHeader('X-Health-Filtered', healthyNodes.length > 0 ? 'true' : 'false');
     res.setHeader('Content-Type', response.headers['content-type']);
     response.data.pipe(res);
 
   } catch (err) {
     console.error(`Streaming error for ${videoId}:`, err.message);
-    res.status(500).json({ error: 'Failed to stream video chunk' });
+    // If the circuit was opened by this error, we might want to return 503
+    res.status(err.code === 'EOPENBREAKER' ? 503 : 500).json({ 
+      error: 'Failed to stream video chunk',
+      reason: err.code === 'EOPENBREAKER' ? 'Circuit Breaker Active' : 'Internal Error'
+    });
   }
 });
 
