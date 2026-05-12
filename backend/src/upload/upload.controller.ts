@@ -9,6 +9,7 @@
 import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { UploadService } from './upload.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import * as path from 'path';
@@ -22,6 +23,7 @@ export class UploadController {
 
   // UPLOAD VIDEO: Endpoint to receive and process new video files
   @Post()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Upload an MP4 video for HLS transcoding' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

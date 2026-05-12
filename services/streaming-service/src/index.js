@@ -38,6 +38,12 @@ app.get('/health', (req, res) => {
 
 const Redis = require('ioredis');
 const axios = require('axios');
+const NodeCache = require('node-cache');
+
+// [PERFORMANCE] Multi-tier in-memory cache
+// - Metadata: 60s (Slow changing)
+// - Health: 2s (Fast changing)
+const localCache = new NodeCache({ stdTTL: 60, checkperiod: 70 });
 
 // [DB] Persistent connection to the distributed metadata store
 const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
@@ -53,29 +59,45 @@ const STORAGE_MAP = {
 app.get('/stream/:videoId/:filename', async (req, res) => {
   const { videoId, filename } = req.params;
   const videoKey = `video:${videoId}`;
+  let cacheHit = false;
 
   try {
-    // 1. [DB] Fetch video metadata from Redis to locate replicas
-    // [DB] HGETALL video:{videoId}
-    const video = await redis.hgetall(videoKey);
+    // 1. [PERFORMANCE] Cache-aside: Try local memory first
+    let video = localCache.get(videoKey);
+    
+    if (!video) {
+      // 2. [DB] Cache miss: Fetch video metadata from Redis
+      video = await redis.hgetall(videoKey);
+      if (video && video.id) {
+        localCache.set(videoKey, video);
+      }
+    } else {
+      cacheHit = true;
+    }
+
     if (!video || !video.id) {
       return res.status(404).json({ error: 'Video not found' });
     }
 
-    // 2. [VALIDATION] Verify that replication has occurred
+    // 3. [VALIDATION] Verify that replication has occurred
     const storageNodes = JSON.parse(video.storageNodes || '[]');
     if (storageNodes.length === 0) {
       return res.status(503).json({ error: 'Video segments not yet replicated' });
     }
 
-    // 3. [PERFORMANCE] Filter storage nodes by real-time health status
-    // [DB] HGETALL node:health:storage-{nodeId}
-    const healthChecks = await Promise.all(
-      storageNodes.map(async (nodeId) => {
-        const health = await redis.hgetall(`node:health:storage-${nodeId}`);
-        return { nodeId, status: health.status || 'up' }; 
-      })
-    );
+    // 4. [PERFORMANCE] Health caching: Reuse health status for 2 seconds
+    const healthCacheKey = 'global:node:health';
+    let healthChecks = localCache.get(healthCacheKey);
+
+    if (!healthChecks) {
+      healthChecks = await Promise.all(
+        storageNodes.map(async (nodeId) => {
+          const health = await redis.hgetall(`node:health:storage-${nodeId}`);
+          return { nodeId, status: health.status || 'up' }; 
+        })
+      );
+      localCache.set(healthCacheKey, healthChecks, 2); // 2 second TTL
+    }
 
     const healthyNodes = healthChecks
       .filter(h => h.status === 'up')
@@ -102,6 +124,7 @@ app.get('/stream/:videoId/:filename', async (req, res) => {
 
     // 6. [SIDE EFFECT] Pipe the storage node's binary data directly to the client
     res.setHeader('X-Proxy-Node', nodeLabel);
+    res.setHeader('X-Metadata-Cache', cacheHit ? 'HIT' : 'MISS');
     res.setHeader('X-Health-Filtered', healthyNodes.length > 0 ? 'true' : 'false');
     res.setHeader('Content-Type', response.headers['content-type']);
     response.data.pipe(res);
