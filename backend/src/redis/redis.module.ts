@@ -8,12 +8,13 @@
 
 import { Global, Module } from '@nestjs/common';
 import { RedisService } from './redis.service';
+import { LockService } from './lock.service';
 
 @Global() // Makes RedisService available across all modules without re-importing
 @Module({
-  // [NESTJS] Provider for the Redis abstraction layer
-  providers: [RedisService],
-  // [NESTJS] Export for dependency injection in other domains
-  exports: [RedisService],
+  // [NESTJS] Providers for shared state and synchronization logic
+  providers: [RedisService, LockService],
+  // [NESTJS] Exports for dependency injection in other domains
+  exports: [RedisService, LockService],
 })
 export class RedisModule {}

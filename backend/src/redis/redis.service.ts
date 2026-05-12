@@ -25,6 +25,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.redisClient.quit();
   }
 
+  // GET CLIENT: Exposes the raw ioredis instance
+  getClient(): Redis {
+    // Why: Needed for third-party libraries (like Redlock) that require direct access
+    return this.redisClient;
+  }
+
   // GET: Retrieves a simple string value by key
   async get(key: string): Promise<string | null> {
     // [DB] GET {key}
