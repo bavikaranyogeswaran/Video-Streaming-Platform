@@ -15,6 +15,13 @@ import axiosRetry from 'axios-retry';
 import NodeCache from 'node-cache';
 import CircuitBreaker from 'opossum';
 import logger from './logger.js';
+import { 
+  register, 
+  httpRequestDurationMicroseconds, 
+  cacheHitsTotal, 
+  cacheMissesTotal,
+  circuitBreakerState 
+} from './metrics.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,7 +31,27 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 
-// 0. [OBSERVABILITY] Request Tracing Middleware
+// 0. [OBSERVABILITY] Prometheus Metrics Endpoint
+// Why: Allows Prometheus server to scrape real-time system metrics
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
+// 0.1 [OBSERVABILITY] Request Latency Tracking Middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const end = httpRequestDurationMicroseconds.startTimer();
+  res.on('finish', () => {
+    end({ 
+      method: req.method, 
+      route: req.route?.path || req.path, 
+      status_code: res.statusCode 
+    });
+  });
+  next();
+});
+
+// 0.2 [OBSERVABILITY] Request Tracing Middleware
 // Why: Captures Correlation IDs from the backend and includes them in all logs
 app.use((req: Request, res: Response, next: NextFunction) => {
   const requestId = req.headers['x-request-id'] || 'internal';
@@ -90,8 +117,14 @@ function getBreaker(nodeLabel: string) {
       });
     }, options);
 
-    breaker.on('open', () => logger.warn(`🚨 Circuit OPEN for Node ${nodeLabel}`));
-    breaker.on('close', () => logger.info(`✅ Circuit CLOSED for Node ${nodeLabel}`));
+    breaker.on('open', () => {
+      logger.warn(`🚨 Circuit OPEN for Node ${nodeLabel}`);
+      circuitBreakerState.set({ node_id: nodeLabel }, 1);
+    });
+    breaker.on('close', () => {
+      logger.info(`✅ Circuit CLOSED for Node ${nodeLabel}`);
+      circuitBreakerState.set({ node_id: nodeLabel }, 0);
+    });
     breaker.on('halfOpen', () => logger.info(`🛠️ Circuit HALF-OPEN for Node ${nodeLabel}`));
 
     breakers[nodeLabel] = breaker;
@@ -121,9 +154,13 @@ app.get('/stream/:videoId/:filename', async (req: Request, res: Response) => {
     
     if (!video) {
       video = await redis.hgetall(videoKey);
-      if (video && video.id) localCache.set(videoKey, video);
+      if (video && video.id) {
+        localCache.set(videoKey, video);
+        cacheMissesTotal.inc();
+      }
     } else {
       cacheHit = true;
+      cacheHitsTotal.inc();
     }
 
     if (!video || !video.id) return res.status(404).json({ error: 'Video not found' });
