@@ -9,8 +9,10 @@
 import { Module } from '@nestjs/common';
 import { VideosService } from './videos.service';
 import { VideosController } from './videos.controller';
+import { ReplicationModule } from '../upload/replication.module';
 
 @Module({
+  imports: [ReplicationModule],
   // [NESTJS] Provider for video metadata persistence logic
   providers: [VideosService],
   // [NESTJS] Public REST endpoints for video discovery

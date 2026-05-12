@@ -10,7 +10,9 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { v4 as uuidv4 } from 'uuid';
+import * as path from 'path';
 import { RedisService } from '../redis/redis.service';
+import { ReplicationService } from '../upload/replication.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { VideoResponseDto } from './dto/video-response.dto';
 
@@ -19,6 +21,7 @@ export class VideosService {
   // [NESTJS] Shared Redis and Local Cache for multi-layer data strategy
   constructor(
     private readonly redisService: RedisService,
+    private readonly replicationService: ReplicationService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
@@ -152,5 +155,26 @@ export class VideosService {
     // 2. [PERFORMANCE] Invalidate L1 Cache
     await this.cacheManager.del('videos:all');
     await this.cacheManager.del(`video:${id}`);
+  }
+
+  // REPAIR: Triggers a manual re-replication to a specific node
+  async repair(id: string, nodeLabel: string): Promise<boolean> {
+    // 1. [VALIDATION] Ensure video exists
+    const video = await this.findOne(id);
+    
+    // 2. [SIDE EFFECT] Map node label to URL
+    const STORAGE_MAP: Record<string, string> = {
+      'A': process.env.STORAGE_NODE_A || 'http://storage-node-a:4001',
+      'B': process.env.STORAGE_NODE_B || 'http://storage-node-b:4001',
+      'C': process.env.STORAGE_NODE_C || 'http://storage-node-c:4001',
+    };
+    
+    const nodeUrl = STORAGE_MAP[nodeLabel];
+    if (!nodeUrl) throw new NotFoundException(`Storage node ${nodeLabel} not found`);
+
+    // 3. [SIDE EFFECT] Trigger repair logic
+    // We assume the HLS files are still in the 'uploads' directory for simplicity
+    const hlsDir = path.join(process.cwd(), 'uploads', id);
+    return this.replicationService.repair(id, hlsDir, nodeUrl);
   }
 }

@@ -65,4 +65,17 @@ export class VideosController {
     // 2. [SIDE EFFECT] Trigger metadata and index cleanup in Redis
     return this.videosService.delete(id);
   }
+
+  // REPAIR: Manual consistency restoration for a specific node
+  @Post(':id/repair/:node')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Trigger manual replication repair for a node' })
+  @ApiResponse({ status: 200, description: 'Repair triggered successfully' })
+  async repair(
+    @Param('id') id: string,
+    @Param('node') node: string,
+  ): Promise<{ success: boolean }> {
+    const success = await this.videosService.repair(id, node);
+    return { success };
+  }
 }

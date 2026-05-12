@@ -8,15 +8,15 @@
 
 import { Module } from '@nestjs/common';
 import { UploadService } from './upload.service';
-import { ReplicationService } from './replication.service';
+import { ReplicationModule } from './replication.module';
 import { UploadController } from './upload.controller';
 import { VideosModule } from '../videos/videos.module';
 
 @Module({
   // [NESTJS] Shared domain logic for video metadata persistence
-  imports: [VideosModule],
+  imports: [VideosModule, ReplicationModule],
   // [NESTJS] Internal services for file processing and distribution
-  providers: [UploadService, ReplicationService],
+  providers: [UploadService],
   // [NESTJS] Public entry points for upload requests
   controllers: [UploadController],
 })

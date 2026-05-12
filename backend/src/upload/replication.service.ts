@@ -87,4 +87,25 @@ export class ReplicationService {
     
     this.logger.log(`Successfully replicated ${videoId} to ${nodeUrl}`);
   }
+
+  // REPAIR: Scans a node for missing segments and synchronizes them
+  async repair(videoId: string, hlsDir: string, nodeUrl: string): Promise<boolean> {
+    try {
+      this.logger.log(`🔍 Repairing consistency for video ${videoId} on ${nodeUrl}...`);
+      
+      // 1. [DB] Query the storage node for existing files (Simplified: assume we need to check existence)
+      // In a production app, we'd call a 'GET /files/:videoId/manifest' on the storage node.
+      // For now, we'll just re-push the files. Since our storage-node is idempotent 
+      // (it overwrites/ignores existing), a re-push acts as a repair.
+      
+      const files = fs.readdirSync(hlsDir);
+      await this.replicateToNode(nodeUrl, videoId, hlsDir, files);
+      
+      this.logger.log(`✅ Consistency restored for ${videoId} on ${nodeUrl}`);
+      return true;
+    } catch (err) {
+      this.logger.error(`❌ Repair failed for ${nodeUrl}: ${err.message}`);
+      return false;
+    }
+  }
 }
