@@ -6,10 +6,10 @@
 // smart failover and load balancing in the delivery layer.
 // =================================================================================
 
-const express = require('express');
-const axios = require('axios');
-const Redis = require('ioredis');
-const cors = require('cors');
+import express, { Request, Response } from 'express';
+import axios from 'axios';
+import { Redis } from 'ioredis';
+import cors from 'cors';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -20,27 +20,42 @@ app.use(express.json());
 
 // [DB] Redis connection with exponential backoff strategy
 const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379', {
-  retryStrategy: (times) => Math.min(times * 200, 3000),
+  retryStrategy: (times: number) => Math.min(times * 200, 3000),
   lazyConnect: true,
 });
 
 redis.on('connect', () => console.log('✅ Health Monitor connected to Redis'));
-redis.on('error', (err) => console.error('❌ Redis error:', err.message));
+redis.on('error', (err: Error) => console.error('❌ Redis error:', err.message));
 
-// Configuration-driven service registry
-const streamingNodes = (process.env.STREAMING_NODES || '').split(',').filter(Boolean);
-const storageNodes   = (process.env.STORAGE_NODES   || '').split(',').filter(Boolean);
+interface Node {
+  id: string;
+  type: 'storage' | 'streaming';
+  url?: string;
+  [key: string]: any;
+}
 
-const allNodes = [
-  ...streamingNodes.map((url, i) => ({ url, id: `streaming-${i + 1}`, type: 'streaming' })),
-  ...storageNodes.map((url, i) => ({ url, id: `storage-${['A','B','C'][i] || i}`, type: 'storage' })),
-];
+// [DISCOVERY] Dynamically resolve all nodes in the cluster from Redis registry
+async function getRegisteredNodes(): Promise<Node[]> {
+  const storageIds = await redis.smembers('vsp:registry:storage');
+  const streamingIds = await redis.smembers('vsp:registry:streaming');
+  
+  const allIds = [
+    ...storageIds.map((id: string) => ({ id, type: 'storage' as const })),
+    ...streamingIds.map((id: string) => ({ id, type: 'streaming' as const })),
+  ];
+  
+  return Promise.all(allIds.map(async ({ id, type }) => {
+    const data = await redis.hgetall(`vsp:node:${id}`);
+    return { ...data, id, type };
+  }));
+}
 
 // Simulation state to override real health checks
-const simulations = {};
+const simulations: Record<string, { status: string, latencyMs?: number }> = {};
 
 // CHECK NODE: Probes a single node and persists its availability status
-async function checkNode(node) {
+async function checkNode(node: Node) {
+  if (!node || !node.url) return;
   const start = Date.now();
   
   // 0. [SIMULATION] Check for manual overrides
@@ -75,7 +90,7 @@ async function checkNode(node) {
 }
 
 // SIMULATE: Allows the frontend/admin to force a node into a specific state
-app.post('/health/simulate', (req, res) => {
+app.post('/health/simulate', (req: Request, res: Response) => {
   const { nodeId, status, latencyMs } = req.body;
   
   if (!nodeId) return res.status(400).json({ error: 'nodeId required' });
@@ -93,30 +108,36 @@ app.post('/health/simulate', (req, res) => {
 
 // POLL ALL: Orchestrates the global heartbeat check
 async function pollAll() {
-  // 1. [PERFORMANCE] Execute all checks in parallel for maximum efficiency
-  const results = await Promise.all(allNodes.map(checkNode));
-  const up   = results.filter(r => r.status === 'up').length;
-  const down = results.filter(r => r.status === 'down').length;
-  console.log(`📊 Health check: ${up} up / ${down} down`);
+  // 1. [DISCOVERY] Get currently registered nodes
+  const nodes = await getRegisteredNodes();
+  
+  // 2. [PERFORMANCE] Execute all checks in parallel for maximum efficiency
+  const results = await Promise.all(nodes.map(checkNode));
+  const up   = results.filter(r => r && r.status === 'up').length;
+  const down = results.filter(r => r && r.status === 'down').length;
+  console.log(`📊 Health check: ${up} up / ${down} down (${nodes.length} registered)`);
 }
 
 // HEALTH CHECK: Returns current monitor status
-app.get('/health', (req, res) => {
+app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'up', service: 'health-monitor', timestamp: new Date().toISOString() });
 });
 
 // GET NODES: Returns the real-time health dashboard for the entire cluster
-app.get('/health/nodes', async (req, res) => {
+app.get('/health/nodes', async (req: Request, res: Response) => {
   try {
-    // 1. [DB] Hydrate current health data for all known nodes from Redis
+    // 1. [DISCOVERY] Fetch all registered nodes
+    const nodes = await getRegisteredNodes();
+    
+    // 2. [DB] Hydrate current health data for all known nodes from Redis
     const results = await Promise.all(
-      allNodes.map(async (node) => {
+      nodes.map(async (node) => {
         const data = await redis.hgetall(`node:health:${node.id}`);
         return { ...node, ...data };
       })
     );
     res.json(results);
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -127,6 +148,6 @@ app.listen(PORT, async () => {
   await redis.connect().catch(() => {});
   
   // 1. [SIDE EFFECT] Initialize polling intervals
-  setInterval(pollAll, POLL_INTERVAL);
+  const interval = setInterval(pollAll, POLL_INTERVAL);
   pollAll(); 
 });

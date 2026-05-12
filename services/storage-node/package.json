@@ -2,18 +2,28 @@
   "name": "storage-node",
   "version": "1.0.0",
   "description": "Distributed storage node — serves and stores HLS video chunks",
-  "main": "src/index.js",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "multer": "^1.4.5-lts.1",
     "cors": "^2.8.5",
-    "morgan": "^1.10.0"
+    "express": "^4.19.2",
+    "ioredis": "^5.10.1",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.7.0",
+    "nodemon": "^3.1.4",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   }
 }

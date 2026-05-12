@@ -6,11 +6,13 @@
 // data chunks from the ingestion orchestrator.
 // =================================================================================
 
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const path = require('path');
-const fs = require('fs');
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+import { Redis } from 'ioredis';
 
 const app = express();
 const PORT = process.env.PORT || 4001;
@@ -28,7 +30,7 @@ if (!fs.existsSync(VIDEO_DIR)) {
 }
 
 // HEALTH CHECK: Heartbeat endpoint for the Health Monitor service
-app.get('/health', (req, res) => {
+app.get('/health', (req: Request, res: Response) => {
   // 1. [VALIDATION] Verify local file system state
   const videos = fs.existsSync(VIDEO_DIR) ? fs.readdirSync(VIDEO_DIR) : [];
   res.json({
@@ -43,15 +45,15 @@ app.get('/health', (req, res) => {
 });
 
 // LIST FILES: Debug/Audit endpoint to see hosted segments
-app.get('/files', (req, res) => {
+app.get('/files', (req: Request, res: Response) => {
   const videos = fs.existsSync(VIDEO_DIR) ? fs.readdirSync(VIDEO_DIR) : [];
   res.json({ nodeId: NODE_ID, nodeLabel: NODE_LABEL, files: videos });
 });
 
 // SERVE FILE: Delivers requested HLS segments or playlists
-app.get('/files/:videoId/:filename', (req, res) => {
+app.get('/files/:videoId/:filename', (req: Request, res: Response) => {
   // 1. [VALIDATION] Resolve and check physical file path
-  const filePath = path.join(VIDEO_DIR, req.params.videoId, req.params.filename);
+  const filePath = path.join(VIDEO_DIR, req.params.videoId as string, req.params.filename as string);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found', nodeId: NODE_ID });
   }
@@ -63,7 +65,6 @@ app.get('/files/:videoId/:filename', (req, res) => {
 });
 
 // ── Ingestion Logic ──────────────────────────────────────────────
-const multer = require('multer');
 
 // [SIDE EFFECT] Configure disk storage for incoming replication chunks
 const storage = multer.diskStorage({
@@ -85,7 +86,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // STORE FILE: Receives replicated video chunks from the orchestrator
-app.post('/store', upload.single('file'), (req, res) => {
+app.post('/store', upload.single('file'), (req: Request, res: Response) => {
   // 1. [VALIDATION] Ensure the multipart upload was successful
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
@@ -99,6 +100,48 @@ app.post('/store', upload.single('file'), (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+// [DB] Registry connection for Service Discovery
+const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
+const INTERNAL_URL = process.env.INTERNAL_URL || `http://storage-node-${NODE_ID.toLowerCase()}:${PORT}`;
+
+async function registerNode() {
+  try {
+    const nodeKey = `vsp:node:${NODE_ID}`;
+    const payload = {
+      id: NODE_ID,
+      label: NODE_LABEL,
+      url: INTERNAL_URL,
+      type: 'storage',
+      registeredAt: new Date().toISOString()
+    };
+    
+    // 1. [DB] Upsert node metadata
+    await redis.hset(nodeKey, payload);
+    // 2. [DB] Add to the global storage registry set
+    await redis.sadd('vsp:registry:storage', NODE_ID);
+    
+    console.log(`📡 Registered as ${NODE_ID} at ${INTERNAL_URL}`);
+  } catch (err: any) {
+    console.error('❌ Failed to register node in discovery service:', err.message);
+  }
+}
+
+async function unregisterNode() {
+  try {
+    await redis.srem('vsp:registry:storage', NODE_ID);
+    console.log(`👋 Unregistered ${NODE_ID} from discovery service`);
+  } catch (err: any) {
+    console.error('❌ Deregistration failed:', err.message);
+  } finally {
+    process.exit(0);
+  }
+}
+
+// Handle graceful shutdown
+process.on('SIGTERM', unregisterNode);
+process.on('SIGINT', unregisterNode);
+
+app.listen(PORT, async () => {
   console.log(`💾 Storage Node [${NODE_ID} — ${NODE_LABEL}] listening on port ${PORT}`);
+  await registerNode();
 });
