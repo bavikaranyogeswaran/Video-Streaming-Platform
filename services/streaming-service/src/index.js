@@ -6,9 +6,9 @@
 // to the most optimal available storage node.
 // =================================================================================
 
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,10 +36,26 @@ app.get('/health', (req, res) => {
   });
 });
 
-const Redis = require('ioredis');
-const axios = require('axios');
-const NodeCache = require('node-cache');
-const CircuitBreaker = require('opossum');
+import Redis from 'ioredis';
+import axios from 'axios';
+import axiosRetry from 'axios-retry';
+import NodeCache from 'node-cache';
+import CircuitBreaker from 'opossum';
+
+// [RESILIENCE] Configure Global Axios Retry
+// Why: Handles transient failures (5xx, timeouts) with exponential backoff.
+axiosRetry(axios, {
+  retries: 2, // Max 2 retries
+  retryDelay: axiosRetry.exponentialDelay,
+  retryCondition: (error) => {
+    // Only retry on network errors or 5xx status codes
+    return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
+           (error.response && error.response.status >= 500);
+  },
+  onRetry: (retryCount, error, requestConfig) => {
+    console.warn(`🔄 Retrying request to ${requestConfig.url} (Attempt ${retryCount})`);
+  }
+});
 
 // [PERFORMANCE] Multi-tier in-memory cache
 const localCache = new NodeCache({ stdTTL: 60, checkperiod: 70 });
@@ -145,6 +161,7 @@ app.get('/stream/:videoId/:filename', async (req, res) => {
     res.setHeader('X-Proxy-Node', nodeLabel);
     res.setHeader('X-Metadata-Cache', cacheHit ? 'HIT' : 'MISS');
     res.setHeader('X-Circuit-State', breaker.opened ? 'OPEN' : 'CLOSED');
+    res.setHeader('X-Retry-Count', response.config['axios-retry']?.retryCount || 0);
     res.setHeader('X-Health-Filtered', healthyNodes.length > 0 ? 'true' : 'false');
     res.setHeader('Content-Type', response.headers['content-type']);
     response.data.pipe(res);

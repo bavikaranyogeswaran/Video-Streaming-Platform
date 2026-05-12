@@ -9,6 +9,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RedisModule } from './redis/redis.module';
@@ -26,6 +27,12 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
       ttl: 60000, // Time window (1 minute)
       limit: 60,   // Max requests per window
     }]),
+    // 2. [PERFORMANCE] Multi-layer Caching (L1: In-memory)
+    // Why: Reduces latency for hot metadata by serving it from memory before hitting Redis.
+    CacheModule.register({
+      ttl: 10000, // 10s default TTL
+      max: 100,   // Max items in memory
+    }),
     RedisModule, 
     AuthModule, 
     VideosModule, 

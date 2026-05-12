@@ -46,9 +46,15 @@ export class UploadService {
     const inputPath = path.join(this.uploadDir, `${videoId}${path.extname(file.originalname)}`);
     const outputPath = path.join(outputDir, 'playlist.m3u8');
 
-    // 4. [SIDE EFFECT] Persist raw buffer to temporary disk storage
-    // ⚠️ NOTE: Blocking IO; consider streams for very large files
-    fs.writeFileSync(inputPath, file.buffer);
+    // 4. [PERFORMANCE] Persist raw buffer to temporary disk storage using streams
+    // Why: Avoids blocking the event loop and handles memory more efficiently for large files
+    const writeStream = fs.createWriteStream(inputPath);
+    await new Promise<void>((resolve, reject) => {
+      writeStream.write(file.buffer);
+      writeStream.end();
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
 
     // 5. [PERFORMANCE] Trigger HLS Transcoding (Async Background Task)
     // Non-blocking execution to return early to the user

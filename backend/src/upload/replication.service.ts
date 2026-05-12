@@ -8,9 +8,20 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import axiosRetry from 'axios-retry';
 import FormData from 'form-data';
 import * as fs from 'fs';
 import * as path from 'path';
+
+// [RESILIENCE] Global retry configuration for backend storage operations
+axiosRetry(axios, {
+  retries: 5,
+  retryDelay: axiosRetry.exponentialDelay,
+  retryCondition: (error) => {
+    return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
+           !!(error.response && error.response.status >= 500);
+  },
+});
 
 @Injectable()
 export class ReplicationService {
@@ -55,17 +66,23 @@ export class ReplicationService {
   private async replicateToNode(nodeUrl: string, videoId: string, hlsDir: string, files: string[]) {
     this.logger.log(`Replicating video ${videoId} to ${nodeUrl}`);
     
-    // 1. [SIDE EFFECT] Stream each file to the target storage node
-    // ⚠️ NOTE: Sequential transfer per node; consider pooling for extremely large segment counts
-    for (const file of files) {
-      const filePath = path.join(hlsDir, file);
-      const formData = new FormData();
-      formData.append('videoId', videoId);
-      formData.append('file', fs.createReadStream(filePath));
+    // 1. [PERFORMANCE] Batch upload segments to the target storage node
+    // Why: Parallelizing transfers reduces latency for videos with many HLS chunks
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      
+      await Promise.all(batch.map(async (file) => {
+        const filePath = path.join(hlsDir, file);
+        const formData = new FormData();
+        formData.append('videoId', videoId);
+        formData.append('file', fs.createReadStream(filePath));
 
-      await axios.post(`${nodeUrl}/store`, formData, {
-        headers: formData.getHeaders(),
-      });
+        await axios.post(`${nodeUrl}/store`, formData, {
+          headers: formData.getHeaders(),
+          timeout: 60000, // Increased to 60s for high-concurrency scenarios
+        });
+      }));
     }
     
     this.logger.log(`Successfully replicated ${videoId} to ${nodeUrl}`);
