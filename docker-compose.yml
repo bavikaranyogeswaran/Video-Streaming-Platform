@@ -65,6 +65,11 @@ services:
       redis:
         condition: service_healthy
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     networks:
       - vsp-network
 
@@ -89,6 +94,11 @@ services:
       redis:
         condition: service_healthy
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - vsp-network
 
@@ -110,6 +120,11 @@ services:
       redis:
         condition: service_healthy
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - vsp-network
 
@@ -131,6 +146,11 @@ services:
       redis:
         condition: service_healthy
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - vsp-network
 
@@ -152,6 +172,11 @@ services:
     volumes:
       - storage-a:/videos
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     networks:
       - vsp-network
 
@@ -169,6 +194,11 @@ services:
     volumes:
       - storage-b:/videos
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     networks:
       - vsp-network
 
@@ -186,6 +216,11 @@ services:
     volumes:
       - storage-c:/videos
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     networks:
       - vsp-network
 

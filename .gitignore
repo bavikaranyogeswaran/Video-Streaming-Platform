@@ -36,3 +36,17 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+graphify-out/
+.graphify_ast.json
+.graphify_detect.json
+.graphify_python
+.graphify_uncached.txt
+.graphify_semantic.json
+.graphify_analysis.json
+.graphify_extract.json
+
+
+
+CLAUDE.md
+.claude/
