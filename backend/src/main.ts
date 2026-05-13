@@ -27,7 +27,7 @@ async function bootstrap() {
           format: winston.format.combine(
             winston.format.timestamp(),
             winston.format.ms(),
-            winston.format.json(), 
+            winston.format.json(),
           ),
         }),
         new winston.transports.DailyRotateFile({
@@ -38,7 +38,7 @@ async function bootstrap() {
           maxFiles: '14d',
           format: winston.format.combine(
             winston.format.timestamp(),
-            winston.format.json()
+            winston.format.json(),
           ),
         }),
       ],
@@ -65,9 +65,9 @@ async function bootstrap() {
   // 4. [VALIDATION] Setup global input sanitization and enforcement
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            // Automatically strip non-decorated properties from payloads
+      whitelist: true, // Automatically strip non-decorated properties from payloads
       forbidNonWhitelisted: true, // Reject requests containing unknown fields
-      transform: true,            // Hydrate plain objects into DTO class instances
+      transform: true, // Hydrate plain objects into DTO class instances
     }),
   );
 

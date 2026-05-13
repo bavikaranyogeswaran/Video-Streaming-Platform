@@ -2,11 +2,15 @@
 // AUTH SERVICE (The Identity Provider)
 // =================================================================================
 // This service handles user registration and credential verification.
-// It manages password security via hashing and generates JWT 
+// It manages password security via hashing and generates JWT
 // tokens for authenticated sessions.
 // =================================================================================
 
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { RedisService } from '../redis/redis.service';
@@ -40,7 +44,11 @@ export class AuthService {
     // [DB] HSET user:{username} -> {username, password, createdAt}
     await this.redisService.hset(userKey, 'username', username);
     await this.redisService.hset(userKey, 'password', hashedPassword);
-    await this.redisService.hset(userKey, 'createdAt', new Date().toISOString());
+    await this.redisService.hset(
+      userKey,
+      'createdAt',
+      new Date().toISOString(),
+    );
 
     return { message: 'User registered successfully' };
   }

@@ -19,18 +19,21 @@ axiosRetry(axios, {
   retries: 5,
   retryDelay: axiosRetry.exponentialDelay,
   retryCondition: (error) => {
-    return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
-           !!(error.response && error.response.status >= 500);
+    return (
+      axiosRetry.isNetworkOrIdempotentRequestError(error) ||
+      !!(error.response && error.response.status >= 500)
+    );
   },
 });
 
 @Injectable()
 export class ReplicationService {
   private readonly logger = new Logger(ReplicationService.name);
-  private readonly CLUSTER_SECRET = process.env.CLUSTER_SECRET || 'vsp_internal_cluster_secret_2024';
-  
+  private readonly CLUSTER_SECRET =
+    process.env.CLUSTER_SECRET || 'vsp_internal_cluster_secret_2024';
+
   constructor(private readonly lockService: LockService) {}
-  
+
   // [NESTJS] Configuration-driven storage node topology
   private readonly storageNodes = [
     process.env.STORAGE_NODE_A || 'http://storage-node-a:4001',
@@ -52,20 +55,24 @@ export class ReplicationService {
 
       // 2. [PERFORMANCE] Trigger parallel replication to primary nodes (A & B)
       const primaryReplication = [
-          this.replicateToNode(this.storageNodes[0], videoId, hlsDir, files),
-          this.replicateToNode(this.storageNodes[1], videoId, hlsDir, files),
+        this.replicateToNode(this.storageNodes[0], videoId, hlsDir, files),
+        this.replicateToNode(this.storageNodes[1], videoId, hlsDir, files),
       ];
 
       // 3. [SIDE EFFECT] Wait for primary nodes to confirm storage
       const results = await Promise.allSettled(primaryReplication);
-      
+
       if (results[0].status === 'fulfilled') successfulNodes.push('A');
       if (results[1].status === 'fulfilled') successfulNodes.push('B');
 
       // 4. [SIDE EFFECT] Fire-and-forget backup to secondary node (C)
       this.replicateToNode(this.storageNodes[2], videoId, hlsDir, files)
-          .then(() => successfulNodes.push('C'))
-          .catch(err => this.logger.error(`Backup replication to Node C failed: ${err.message}`));
+        .then(() => successfulNodes.push('C'))
+        .catch((err) =>
+          this.logger.error(
+            `Backup replication to Node C failed: ${err.message}`,
+          ),
+        );
 
       return successfulNodes;
     } finally {
@@ -75,46 +82,59 @@ export class ReplicationService {
   }
 
   // REPLICATE TO NODE: Performs multi-part upload of HLS assets to a single node
-  private async replicateToNode(nodeUrl: string, videoId: string, hlsDir: string, files: string[]) {
+  private async replicateToNode(
+    nodeUrl: string,
+    videoId: string,
+    hlsDir: string,
+    files: string[],
+  ) {
     this.logger.log(`Replicating video ${videoId} to ${nodeUrl}`);
-    
+
     // 1. [PERFORMANCE] Batch upload segments to the target storage node
     // Why: Parallelizing transfers reduces latency for videos with many HLS chunks
     const BATCH_SIZE = 5;
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
       const batch = files.slice(i, i + BATCH_SIZE);
-      
-      await Promise.all(batch.map(async (file) => {
-        const filePath = path.join(hlsDir, file);
-        const formData = new FormData();
-        formData.append('videoId', videoId);
-        formData.append('file', fs.createReadStream(filePath));
 
-        await axios.post(`${nodeUrl}/store`, formData, {
-          headers: {
-            ...formData.getHeaders(),
-            'x-internal-secret': this.CLUSTER_SECRET
-          },
-          timeout: 60000, // Increased to 60s for high-concurrency scenarios
-        });
-      }));
+      await Promise.all(
+        batch.map(async (file) => {
+          const filePath = path.join(hlsDir, file);
+          const formData = new FormData();
+          formData.append('videoId', videoId);
+          formData.append('file', fs.createReadStream(filePath));
+
+          await axios.post(`${nodeUrl}/store`, formData, {
+            headers: {
+              ...formData.getHeaders(),
+              'x-internal-secret': this.CLUSTER_SECRET,
+            },
+            timeout: 60000, // Increased to 60s for high-concurrency scenarios
+          });
+        }),
+      );
     }
-    
+
     this.logger.log(`Successfully replicated ${videoId} to ${nodeUrl}`);
   }
 
   // REPAIR: Scans a node for missing segments and synchronizes them
-  async repair(videoId: string, hlsDir: string, nodeUrl: string): Promise<boolean> {
+  async repair(
+    videoId: string,
+    hlsDir: string,
+    nodeUrl: string,
+  ): Promise<boolean> {
     // 0. [CONCURRENCY] Acquire distributed lock for this video
     const lockKey = `lock:replicate:${videoId}`;
     const lock = await this.lockService.acquire(lockKey, 300000);
 
     try {
-      this.logger.log(`🔍 Repairing consistency for video ${videoId} on ${nodeUrl}...`);
-      
+      this.logger.log(
+        `🔍 Repairing consistency for video ${videoId} on ${nodeUrl}...`,
+      );
+
       const files = fs.readdirSync(hlsDir);
       await this.replicateToNode(nodeUrl, videoId, hlsDir, files);
-      
+
       this.logger.log(`✅ Consistency restored for ${videoId} on ${nodeUrl}`);
       return true;
     } catch (err) {

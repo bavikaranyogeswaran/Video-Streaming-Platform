@@ -20,7 +20,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // 2. [SECURITY] Reject expired tokens automatically
       ignoreExpiration: false,
       // 3. [SECURITY] Key used for HMAC signature verification
-      secretOrKey: process.env.JWT_SECRET || 'vsp_super_secret_jwt_key_change_in_prod_2024',
+      secretOrKey:
+        process.env.JWT_SECRET ||
+        'vsp_super_secret_jwt_key_change_in_prod_2024',
     });
   }
 

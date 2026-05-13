@@ -25,20 +25,23 @@ import { MetricsService } from './common/metrics/metrics.service';
   imports: [
     // 1. [SECURITY] Rate Limiting Configuration
     // Why: Protects the API from denial-of-service and brute-force attacks.
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // Time window (1 minute)
-      limit: 60,   // Max requests per window
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // Time window (1 minute)
+        limit: 60, // Max requests per window
+      },
+    ]),
     // 2. [PERFORMANCE] Multi-layer Caching (L1: In-memory)
     // Why: Reduces latency for hot metadata by serving it from memory before hitting Redis.
     CacheModule.register({
       ttl: 10000, // 10s default TTL
-      max: 100,   // Max items in memory
+      max: 100, // Max items in memory
+      isGlobal: true,
     }),
-    RedisModule, 
-    AuthModule, 
-    VideosModule, 
-    UploadModule
+    RedisModule,
+    AuthModule,
+    VideosModule,
+    UploadModule,
   ],
   // [NESTJS] System-level health and root endpoints
   controllers: [AppController],
@@ -60,8 +63,6 @@ import { MetricsService } from './common/metrics/metrics.service';
 export class AppModule implements NestModule {
   // [OBSERVABILITY] Global Middleware Registry
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RequestIdMiddleware)
-      .forRoutes('*'); // Apply correlation IDs to every single endpoint
+    consumer.apply(RequestIdMiddleware).forRoutes('*'); // Apply correlation IDs to every single endpoint
   }
 }

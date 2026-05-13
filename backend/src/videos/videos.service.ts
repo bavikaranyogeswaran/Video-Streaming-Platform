@@ -26,7 +26,10 @@ export class VideosService {
   ) {}
 
   // CREATE VIDEO: Registers a new video record in the system
-  async create(createVideoDto: CreateVideoDto, username: string): Promise<VideoResponseDto> {
+  async create(
+    createVideoDto: CreateVideoDto,
+    username: string,
+  ): Promise<VideoResponseDto> {
     // 1. [VALIDATION] Generate unique identifier and prepare payload
     const id = uuidv4();
     const videoKey = `video:${id}`;
@@ -67,15 +70,16 @@ export class VideosService {
   // FIND ALL: Retrieves all indexed videos ordered by upload date
   async findAll(): Promise<VideoResponseDto[]> {
     // 1. [PERFORMANCE] Attempt to serve from L1 Cache (Memory)
-    const cached = await this.cacheManager.get<VideoResponseDto[]>('videos:all');
+    const cached =
+      await this.cacheManager.get<VideoResponseDto[]>('videos:all');
     if (cached) return cached;
 
     // 2. [DB] Fetch IDs from the sorted index in reverse order (newest first)
     // [DB] ZRANGE videos:index 0 -1 REV
     const ids = await this.redisService.zrange('videos:index', 0, -1, 'REV');
-    
+
     // 3. [DB] Hydrate metadata for each video record
-    const videos = await Promise.all(ids.map(id => this.findOne(id)));
+    const videos = await Promise.all(ids.map((id) => this.findOne(id)));
 
     // 4. [PERFORMANCE] Populate L1 Cache for subsequent requests
     await this.cacheManager.set('videos:all', videos);
@@ -114,28 +118,32 @@ export class VideosService {
   // DELETE: Safely removes video metadata and index entry
   async delete(id: string): Promise<void> {
     const videoKey = `video:${id}`;
-    
+
     // 1. [DB] Verify existence before attempting deletion
     const data = await this.redisService.hgetall(videoKey);
-    
-    if (data && data.id) {
-       // 2. [TRANSACTIONAL] Remove hash and index member
-       // ⚠️ NOTE: Cleanup of actual video chunks on storage nodes should happen via side effect
-       await this.redisService.del(videoKey);
-       await this.redisService.zrem('videos:index', id);
 
-       // 3. [PERFORMANCE] Invalidate L1 Cache
-       await this.cacheManager.del('videos:all');
-       await this.cacheManager.del(`video:${id}`);
+    if (data && data.id) {
+      // 2. [TRANSACTIONAL] Remove hash and index member
+      // ⚠️ NOTE: Cleanup of actual video chunks on storage nodes should happen via side effect
+      await this.redisService.del(videoKey);
+      await this.redisService.zrem('videos:index', id);
+
+      // 3. [PERFORMANCE] Invalidate L1 Cache
+      await this.cacheManager.del('videos:all');
+      await this.cacheManager.del(`video:${id}`);
     }
   }
 
   // UPDATE STATUS: Modifies the processing state of a video
-  async updateStatus(id: string, status: 'processing' | 'ready' | 'error', hlsPath?: string): Promise<void> {
+  async updateStatus(
+    id: string,
+    status: 'processing' | 'ready' | 'error',
+    hlsPath?: string,
+  ): Promise<void> {
     // 1. [DB] Update status field in the video hash
     const videoKey = `video:${id}`;
     await this.redisService.hset(videoKey, 'status', status);
-    
+
     // 2. [DB] If ready, attach the public streaming path
     if (hlsPath) {
       await this.redisService.hset(videoKey, 'hlsPath', hlsPath);
@@ -150,7 +158,11 @@ export class VideosService {
   async setStorageNodes(id: string, nodes: string[]): Promise<void> {
     // 1. [DB] Persist node labels (e.g. ['A', 'B']) for failover selection
     const videoKey = `video:${id}`;
-    await this.redisService.hset(videoKey, 'storageNodes', JSON.stringify(nodes));
+    await this.redisService.hset(
+      videoKey,
+      'storageNodes',
+      JSON.stringify(nodes),
+    );
 
     // 2. [PERFORMANCE] Invalidate L1 Cache
     await this.cacheManager.del('videos:all');
@@ -161,16 +173,17 @@ export class VideosService {
   async repair(id: string, nodeLabel: string): Promise<boolean> {
     // 1. [VALIDATION] Ensure video exists
     const video = await this.findOne(id);
-    
+
     // 2. [SIDE EFFECT] Map node label to URL
     const STORAGE_MAP: Record<string, string> = {
-      'A': process.env.STORAGE_NODE_A || 'http://storage-node-a:4001',
-      'B': process.env.STORAGE_NODE_B || 'http://storage-node-b:4001',
-      'C': process.env.STORAGE_NODE_C || 'http://storage-node-c:4001',
+      A: process.env.STORAGE_NODE_A || 'http://storage-node-a:4001',
+      B: process.env.STORAGE_NODE_B || 'http://storage-node-b:4001',
+      C: process.env.STORAGE_NODE_C || 'http://storage-node-c:4001',
     };
-    
+
     const nodeUrl = STORAGE_MAP[nodeLabel];
-    if (!nodeUrl) throw new NotFoundException(`Storage node ${nodeLabel} not found`);
+    if (!nodeUrl)
+      throw new NotFoundException(`Storage node ${nodeLabel} not found`);
 
     // 3. [SIDE EFFECT] Trigger repair logic
     // We assume the HLS files are still in the 'uploads' directory for simplicity

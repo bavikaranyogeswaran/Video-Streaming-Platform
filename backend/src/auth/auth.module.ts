@@ -19,7 +19,9 @@ import { JwtStrategy } from './jwt.strategy';
     PassportModule,
     // 1. [SECURITY] Configure the JSON Web Token engine
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'vsp_super_secret_jwt_key_change_in_prod_2024',
+      secret:
+        process.env.JWT_SECRET ||
+        'vsp_super_secret_jwt_key_change_in_prod_2024',
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as any },
     }),
   ],

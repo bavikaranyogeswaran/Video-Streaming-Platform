@@ -45,6 +45,10 @@ graphify-out/
 .graphify_semantic.json
 .graphify_analysis.json
 .graphify_extract.json
+.graphify_ast.py
+.graphify_cache_check.py
+.graphify_cached.json
+
 
 
 

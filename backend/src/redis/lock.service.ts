@@ -11,16 +11,13 @@ export class LockService implements OnModuleInit {
   onModuleInit() {
     // 1. [RESILIENCE] Initialize Redlock with the existing Redis connection
     // Why: Ensures distributed locking consistency across multiple backend replicas
-    this.redlock = new Redlock(
-      [this.redisService.getClient()],
-      {
-        driftFactor: 0.01,
-        retryCount: 10,
-        retryDelay: 200,
-        retryJitter: 200,
-        automaticExtensionThreshold: 500,
-      }
-    );
+    this.redlock = new Redlock([this.redisService.getClient()], {
+      driftFactor: 0.01,
+      retryCount: 10,
+      retryDelay: 200,
+      retryJitter: 200,
+      automaticExtensionThreshold: 500,
+    });
 
     this.redlock.on('error', (error) => {
       console.error('❌ Redlock Error:', error);

@@ -17,7 +17,10 @@ export class RegisterDto {
   username: string;
 
   // 2. [VALIDATION] Enforce minimum security length for passwords
-  @ApiProperty({ example: 'password123', description: 'User password (min 8 chars)' })
+  @ApiProperty({
+    example: 'password123',
+    description: 'User password (min 8 chars)',
+  })
   @IsString()
   @MinLength(8)
   password: string;

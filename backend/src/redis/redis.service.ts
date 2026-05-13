@@ -16,7 +16,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // ON MODULE INIT: Establish connection to the Redis cluster
   onModuleInit() {
     // 1. [DB] Initialize ioredis instance with environment configuration
-    this.redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    this.redisClient = new Redis(
+      process.env.REDIS_URL || 'redis://localhost:6379',
+    );
   }
 
   // ON MODULE DESTROY: Graceful shutdown of the client connection
@@ -87,7 +89,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ZRANGE: Retrieves a range of members from a Sorted Set
-  async zrange(key: string, start: number, stop: number, order: 'ASC' | 'REV' = 'ASC'): Promise<string[]> {
+  async zrange(
+    key: string,
+    start: number,
+    stop: number,
+    order: 'ASC' | 'REV' = 'ASC',
+  ): Promise<string[]> {
     // 1. [DB] ZRANGE {key} {start} {stop} [REV]
     // Why: Facilitates feed generation and pagination
     if (order === 'REV') {

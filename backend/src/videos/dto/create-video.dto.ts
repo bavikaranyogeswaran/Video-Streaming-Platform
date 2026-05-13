@@ -17,7 +17,10 @@ export class CreateVideoDto {
   title: string;
 
   // 2. [VALIDATION] Optional secondary metadata
-  @ApiProperty({ example: 'A video about distributed systems', required: false })
+  @ApiProperty({
+    example: 'A video about distributed systems',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   description?: string;

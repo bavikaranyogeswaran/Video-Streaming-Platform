@@ -2,7 +2,7 @@
 // VIDEOS MODULE (The Catalog Domain)
 // =================================================================================
 // This module manages the video discovery and metadata domain.
-// It exposes retrieval services and controllers used by the 
+// It exposes retrieval services and controllers used by the
 // frontend and the ingestion pipeline.
 // =================================================================================
 

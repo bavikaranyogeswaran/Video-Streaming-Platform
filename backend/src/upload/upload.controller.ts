@@ -6,9 +6,22 @@
 // to the HLS transcoding and replication services.
 // =================================================================================
 
-import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UseInterceptors,
+  UploadedFile,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { UploadService } from './upload.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -49,13 +62,15 @@ export class UploadController {
     if (!file) {
       throw new BadRequestException('Video file is required');
     }
-    
+
     // 2. [VALIDATION] File extension whitelist check
     // Restricts uploads to supported container formats for FFmpeg
     const allowedExtensions = ['.mp4', '.mkv', '.avi'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
-       throw new BadRequestException('Invalid file type. Only MP4, MKV, and AVI are allowed.');
+      throw new BadRequestException(
+        'Invalid file type. Only MP4, MKV, and AVI are allowed.',
+      );
     }
 
     // 3. [SIDE EFFECT] Delegate business logic to UploadService

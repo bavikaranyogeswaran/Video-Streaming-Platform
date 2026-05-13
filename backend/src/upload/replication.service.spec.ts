@@ -53,11 +53,11 @@ describe('ReplicationService', () => {
 
     it('should handle partial failures during replication', async () => {
       mockedFs.readdirSync.mockReturnValue(['init.mp4'] as any);
-      
+
       // Node A fails, Node B succeeds
       mockedAxios.post
         .mockRejectedValueOnce(new Error('Network Error')) // Node A
-        .mockResolvedValueOnce({ status: 200 });           // Node B
+        .mockResolvedValueOnce({ status: 200 }); // Node B
 
       const result = await service.replicate('video-123', '/tmp/hls');
 
@@ -71,7 +71,11 @@ describe('ReplicationService', () => {
       mockedFs.readdirSync.mockReturnValue(['test.ts'] as any);
       mockedAxios.post.mockResolvedValue({ status: 200 });
 
-      const result = await service.repair('video-123', '/tmp/hls', 'http://node-a:4001');
+      const result = await service.repair(
+        'video-123',
+        '/tmp/hls',
+        'http://node-a:4001',
+      );
 
       expect(result).toBe(true);
       expect(mockedAxios.post).toHaveBeenCalled();
@@ -81,7 +85,11 @@ describe('ReplicationService', () => {
       mockedFs.readdirSync.mockReturnValue(['test.ts'] as any);
       mockedAxios.post.mockRejectedValue(new Error('Storage node offline'));
 
-      const result = await service.repair('video-123', '/tmp/hls', 'http://node-a:4001');
+      const result = await service.repair(
+        'video-123',
+        '/tmp/hls',
+        'http://node-a:4001',
+      );
 
       expect(result).toBe(false);
     });

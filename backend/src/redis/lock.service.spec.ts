@@ -44,7 +44,7 @@ describe('LockService', () => {
   describe('acquire', () => {
     it('should successfully acquire a lock', async () => {
       const lock = await service.acquire('test-resource', 5000);
-      
+
       expect(mockRedlock.acquire).toHaveBeenCalledWith(['test-resource'], 5000);
       expect(lock).toBeDefined();
     });
@@ -52,8 +52,9 @@ describe('LockService', () => {
     it('should throw an error if lock acquisition fails', async () => {
       mockRedlock.acquire.mockRejectedValue(new Error('Lock busy'));
 
-      await expect(service.acquire('test-resource', 5000))
-        .rejects.toThrow('Could not acquire lock for test-resource: Lock busy');
+      await expect(service.acquire('test-resource', 5000)).rejects.toThrow(
+        'Could not acquire lock for test-resource: Lock busy',
+      );
     });
   });
 
