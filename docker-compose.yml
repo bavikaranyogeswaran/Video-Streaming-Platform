@@ -262,6 +262,19 @@ services:
     networks:
       - vsp-network
 
+  # ────────────────────────────────────────────────────────────────
+  # JAEGER — Distributed Tracing Backend (port 16686)
+  # ────────────────────────────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: vsp-jaeger
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318"   # OTLP HTTP
+    restart: always
+    networks:
+      - vsp-network
+
 # ────────────────────────────────────────────────────────────────
 # NETWORKS
 # ────────────────────────────────────────────────────────────────
