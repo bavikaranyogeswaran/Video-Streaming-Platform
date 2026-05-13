@@ -27,6 +27,7 @@ axiosRetry(axios, {
 @Injectable()
 export class ReplicationService {
   private readonly logger = new Logger(ReplicationService.name);
+  private readonly CLUSTER_SECRET = process.env.CLUSTER_SECRET || 'vsp_internal_cluster_secret_2024';
   
   constructor(private readonly lockService: LockService) {}
   
@@ -90,7 +91,10 @@ export class ReplicationService {
         formData.append('file', fs.createReadStream(filePath));
 
         await axios.post(`${nodeUrl}/store`, formData, {
-          headers: formData.getHeaders(),
+          headers: {
+            ...formData.getHeaders(),
+            'x-internal-secret': this.CLUSTER_SECRET
+          },
           timeout: 60000, // Increased to 60s for high-concurrency scenarios
         });
       }));

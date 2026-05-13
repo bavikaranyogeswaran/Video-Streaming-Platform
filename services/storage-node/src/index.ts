@@ -13,16 +13,29 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { Redis } from 'ioredis';
+import helmet from 'helmet';
 
 const app = express();
 const PORT = process.env.PORT || 4001;
 const NODE_ID = process.env.NODE_ID || '?';
 const NODE_LABEL = process.env.NODE_LABEL || 'Unknown';
 const VIDEO_DIR = '/videos';
+const CLUSTER_SECRET = process.env.CLUSTER_SECRET || 'vsp_internal_cluster_secret_2024';
 
+app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+
+// 0. [SECURITY] Internal Service Authentication Middleware
+// Why: Protects the storage node from unauthorized external or internal access
+const internalAuth = (req: Request, res: Response, next: any) => {
+  const secret = req.headers['x-internal-secret'];
+  if (secret !== CLUSTER_SECRET) {
+    return res.status(403).json({ error: 'Access denied: Invalid Cluster Secret' });
+  }
+  next();
+};
 
 // 1. [SIDE EFFECT] Ensure physical storage directory exists on mount point
 if (!fs.existsSync(VIDEO_DIR)) {
@@ -45,7 +58,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // LIST FILES: Debug/Audit endpoint to see hosted segments
-app.get('/files', (req: Request, res: Response) => {
+app.get('/files', internalAuth, (req: Request, res: Response) => {
   const videos = fs.existsSync(VIDEO_DIR) ? fs.readdirSync(VIDEO_DIR) : [];
   res.json({ nodeId: NODE_ID, nodeLabel: NODE_LABEL, files: videos });
 });
@@ -86,7 +99,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // STORE FILE: Receives replicated video chunks from the orchestrator
-app.post('/store', upload.single('file'), (req: Request, res: Response) => {
+app.post('/store', internalAuth, upload.single('file'), (req: Request, res: Response) => {
   // 1. [VALIDATION] Ensure the multipart upload was successful
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });

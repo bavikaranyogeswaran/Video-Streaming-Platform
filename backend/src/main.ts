@@ -13,6 +13,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { WinstonModule } from 'nest-winston';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -20,6 +21,7 @@ async function bootstrap() {
   // Why: Enables machine-readable logs (JSON) for centralized monitoring (ELK/Grafana)
   const app = await NestFactory.create(AppModule, {
     logger: WinstonModule.createLogger({
+      // ... (transports configuration remains same)
       transports: [
         new winston.transports.Console({
           format: winston.format.combine(
@@ -28,8 +30,6 @@ async function bootstrap() {
             winston.format.json(), 
           ),
         }),
-        // 1.1 [OBSERVABILITY] Persistent Log Rotation
-        // Why: Prevents disk exhaustion by rotating logs daily and keeping a 14-day history
         new winston.transports.DailyRotateFile({
           filename: 'logs/backend-%DATE%.log',
           datePattern: 'YYYY-MM-DD',
@@ -44,6 +44,11 @@ async function bootstrap() {
       ],
     }),
   });
+
+  // 1.1 [SECURITY] Helmet Hardening
+  // Why: Automatically sets secure HTTP headers (XSS, Clickjacking, CSP, etc.)
+  app.use(helmet());
+
   const logger = new Logger('Bootstrap');
 
   // 2. [SIDE EFFECT] Set global API routing prefix

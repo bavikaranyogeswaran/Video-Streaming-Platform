@@ -15,6 +15,7 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import NodeCache from 'node-cache';
 import CircuitBreaker from 'opossum';
+import helmet from 'helmet';
 import logger from './logger.js';
 import { 
   register, 
@@ -28,6 +29,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const REPLICA_ID = process.env.REPLICA_ID || '?';
 
+app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
