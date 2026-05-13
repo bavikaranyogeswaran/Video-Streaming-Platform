@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'vsp-backend'
+    metrics_path: '/api/metrics' # NestJS metrics endpoint (we'll need to add this)
+    static_configs:
+      - targets: ['backend:3000']
+
+  - job_name: 'vsp-streaming'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['streaming-1:3001', 'streaming-2:3001', 'streaming-3:3001']
+
+  - job_name: 'vsp-storage'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['storage-node-a:4001', 'storage-node-b:4001', 'storage-node-c:4001']
+
+  - job_name: 'vsp-health-monitor'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['health-monitor:5000']

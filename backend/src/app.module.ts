@@ -18,6 +18,7 @@ import { VideosModule } from './videos/videos.module';
 import { UploadModule } from './upload/upload.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { MetricsService } from './common/metrics/metrics.service';
 
 @Module({
   // [NESTJS] Aggregation of core infrastructure and business features
@@ -43,6 +44,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
   controllers: [AppController],
   providers: [
     AppService,
+    MetricsService,
     // 2. [SECURITY] Register global JWT guard
     {
       provide: APP_GUARD,
