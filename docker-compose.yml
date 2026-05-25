@@ -13,12 +13,28 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - backend
-      - streaming-1
-      - streaming-2
-      - streaming-3
-      - frontend
+      backend:
+        condition: service_healthy
+      streaming-1:
+        condition: service_healthy
+      streaming-2:
+        condition: service_healthy
+      streaming-3:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - vsp-network
 
@@ -34,6 +50,11 @@ services:
     volumes:
       - redis-data:/data
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
     networks:
       - vsp-network
     healthcheck:
@@ -70,6 +91,12 @@ services:
         limits:
           cpus: '0.50'
           memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - vsp-network
 
@@ -99,6 +126,12 @@ services:
         limits:
           cpus: '0.25'
           memory: 256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
@@ -125,6 +158,12 @@ services:
         limits:
           cpus: '0.25'
           memory: 256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
@@ -151,6 +190,12 @@ services:
         limits:
           cpus: '0.25'
           memory: 256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
@@ -177,6 +222,12 @@ services:
         limits:
           cpus: '0.50'
           memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
@@ -199,6 +250,12 @@ services:
         limits:
           cpus: '0.50'
           memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
@@ -221,6 +278,12 @@ services:
         limits:
           cpus: '0.50'
           memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
@@ -244,11 +307,22 @@ services:
       redis:
         condition: service_healthy
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.15'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - vsp-network
 
   # ────────────────────────────────────────────────────────────────
-  # FRONTEND — React + TypeScript (Vite dev server)
+  # FRONTEND — React + TypeScript (production static build via nginx)
   # ────────────────────────────────────────────────────────────────
   frontend:
     build:
@@ -256,11 +330,22 @@ services:
       dockerfile: Dockerfile
     container_name: vsp-frontend
     ports:
-      - "5173:5173"
+      - "5173:80"
     environment:
       - VITE_API_URL=http://localhost/api
       - VITE_STREAM_URL=http://localhost/stream
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - vsp-network
 
@@ -268,7 +353,7 @@ services:
   # PROMETHEUS — Metrics Collector (port 9090)
   # ────────────────────────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     container_name: vsp-prometheus
     ports:
       - "9090:9090"
@@ -276,6 +361,11 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - vsp-network
 
@@ -283,7 +373,7 @@ services:
   # GRAFANA — Dashboard Visualization (port 3005)
   # ────────────────────────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     container_name: vsp-grafana
     ports:
       - "3005:3000"
@@ -294,6 +384,11 @@ services:
     depends_on:
       - prometheus
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - vsp-network
 
@@ -301,12 +396,17 @@ services:
   # JAEGER — Distributed Tracing Backend (port 16686)
   # ────────────────────────────────────────────────────────────────
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.58
     container_name: vsp-jaeger
     ports:
       - "16686:16686" # UI
       - "4318:4318"   # OTLP HTTP
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - vsp-network
 

@@ -3,3 +3,13 @@ dist
 .git
 .gitignore
 README.md
+*.md
+eslint.config.*
+postcss.config.*
+tailwind.config.*
+playwright.config.*
+.dockerignore
+Dockerfile
+tests/
+*.spec.*
+*.test.*

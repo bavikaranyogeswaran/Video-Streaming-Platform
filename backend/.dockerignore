@@ -4,3 +4,12 @@ dist
 .git
 .gitignore
 README.md
+*.md
+eslint.config.*
+.prettierrc
+.dockerignore
+Dockerfile
+test/
+scratch/
+*.spec.*
+*.test.*
