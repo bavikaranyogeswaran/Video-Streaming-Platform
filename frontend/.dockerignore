@@ -5,8 +5,6 @@ dist
 README.md
 *.md
 eslint.config.*
-postcss.config.*
-tailwind.config.*
 playwright.config.*
 .dockerignore
 Dockerfile
