@@ -52,9 +52,9 @@ export class AuthService {
    * don't leak whether the username exists.
    */
   async login(loginDto: LoginDto) {
-    const { username, password } = loginDto;
+    const { identifier, password } = loginDto;
 
-    const user = await this.usersService.findByUsernameWithPassword(username);
+    const user = await this.usersService.findByIdentifierWithPassword(identifier);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }

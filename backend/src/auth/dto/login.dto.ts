@@ -10,11 +10,11 @@ import { IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
-  // 1. [VALIDATION] Require username for lookup
-  @ApiProperty({ example: 'johndoe' })
+  // 1. [VALIDATION] Require identifier (username or email) for lookup
+  @ApiProperty({ example: 'johndoe@example.com' })
   @IsString()
   @IsNotEmpty()
-  username: string;
+  identifier: string;
 
   // 2. [VALIDATION] Require password for verification
   @ApiProperty({ example: 'password123' })

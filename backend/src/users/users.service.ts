@@ -30,6 +30,23 @@ export class UsersService {
       .getOne();
   }
 
+  /**
+   * Lookup by either email or username, including the password column.
+   */
+  async findByIdentifierWithPassword(identifier: string): Promise<User | null> {
+    const isEmail = identifier.includes('@');
+    
+    const query = this.users.createQueryBuilder('u').addSelect('u.password');
+    
+    if (isEmail) {
+      query.where('u.email = :identifier', { identifier });
+    } else {
+      query.where('u.username = :identifier', { identifier });
+    }
+    
+    return query.getOne();
+  }
+
   async findByUsername(username: string): Promise<User | null> {
     return this.users.findOne({ where: { username } });
   }

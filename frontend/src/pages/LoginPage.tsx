@@ -10,7 +10,7 @@ const LoginPage: React.FC = () => {
   const location = useLocation();
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -23,12 +23,12 @@ const LoginPage: React.FC = () => {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password) return;
+    if (!identifier.trim() || !password) return;
     setLoading(true);
     setError(null);
     try {
       const { access_token, username: u } = await authService.login(
-        username.trim(),
+        identifier.trim(),
         password,
       );
       setAuth({ username: u }, access_token);
@@ -57,13 +57,13 @@ const LoginPage: React.FC = () => {
 
       <form onSubmit={onSubmit} className="space-y-5" noValidate>
         <Field
-          label="Username"
-          id="username"
-          autoComplete="username"
-          value={username}
+          label="Email or Username"
+          id="identifier"
+          autoComplete="username email"
+          value={identifier}
           disabled={loading}
-          onChange={setUsername}
-          placeholder="your-handle"
+          onChange={setIdentifier}
+          placeholder="your-handle or you@example.com"
         />
 
         <div className="space-y-2">
@@ -113,7 +113,7 @@ const LoginPage: React.FC = () => {
 
         <button
           type="submit"
-          disabled={loading || !username.trim() || !password}
+          disabled={loading || !identifier.trim() || !password}
           className="btn-primary w-full py-3 text-sm font-semibold"
         >
           {loading ? (
