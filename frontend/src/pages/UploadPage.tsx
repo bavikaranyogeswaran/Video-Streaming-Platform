@@ -1,182 +1,334 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Upload, FileVideo, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Upload as UploadIcon,
+  FileVideo,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Sparkles,
+  Globe,
+  ShieldCheck,
+  PlayCircle,
+} from 'lucide-react';
 import { videoService } from '../services/videoService.ts';
 import { cn } from '../lib/utils.ts';
+
+type Stage = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
+
+const ACCEPT = 'video/mp4,video/x-matroska,video/x-msvideo';
+const ALLOWED_EXT = /\.(mp4|mkv|avi)$/i;
+const MAX_BYTES = 600 * 1024 * 1024; // matches nginx client_max_body_size
 
 const UploadPage: React.FC = () => {
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [stage, setStage] = useState<Stage>('idle');
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [result, setResult] = useState<{
+    videoId: string;
+    deduped?: boolean;
+  } | null>(null);
 
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const onDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  // ── File handling ──────────────────────────────────────────────
+  const acceptFile = (f: File) => {
+    setError(null);
+    if (!ALLOWED_EXT.test(f.name)) {
+      setError('Only .mp4, .mkv, and .avi files are accepted.');
+      return;
+    }
+    if (f.size > MAX_BYTES) {
+      setError(
+        `That file is ${(f.size / 1024 / 1024).toFixed(0)} MB. Max upload is 600 MB.`,
+      );
+      return;
+    }
+    setFile(f);
+    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
+  };
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type.startsWith('video/')) {
-      setFile(droppedFile);
-      if (!title) setTitle(droppedFile.name.split('.')[0]);
-    } else {
-      setError('Please upload a valid video file');
-    }
-  }, [title]);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) acceptFile(dropped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      if (!title) setTitle(selectedFile.name.split('.')[0]);
-    }
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0];
+    if (picked) acceptFile(picked);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file || !title) return;
+  const reset = () => {
+    setFile(null);
+    setTitle('');
+    setProgress(0);
+    setStage('idle');
+    setError(null);
+    setResult(null);
+  };
 
-    setIsUploading(true);
+  // ── Submit ─────────────────────────────────────────────────────
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file || !title.trim()) return;
+    setStage('uploading');
+    setProgress(0);
     setError(null);
 
     try {
-      await videoService.uploadVideo(file, title);
-      setIsSuccess(true);
-      setTimeout(() => {
-        navigate('/');
-      }, 3000);
+      const res = await videoService.uploadVideo(
+        file,
+        title.trim(),
+        (pct) => {
+          setProgress(pct);
+          // When bytes are fully sent, server starts transcoding —
+          // flip into a determinate-then-indeterminate state.
+          if (pct >= 100) setStage('processing');
+        },
+      );
+      setResult({ videoId: res.videoId, deduped: !!res.deduped });
+      setStage('done');
+      // Auto-bounce to the video page after a short victory beat.
+      setTimeout(() => navigate(`/video/${res.videoId}`), 2200);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Upload failed');
-      setIsUploading(false);
+      const msg = err?.response?.data?.message;
+      setError(
+        Array.isArray(msg)
+          ? msg.join(', ')
+          : msg || 'Upload failed. Please try again.',
+      );
+      setStage('error');
     }
   };
 
-  if (isSuccess) {
+  // ── Success screen ─────────────────────────────────────────────
+  if (stage === 'done' && result) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] space-y-6">
-        <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center animate-bounce">
-          <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+      <div className="min-h-[80vh] flex flex-col items-center justify-center px-6 text-center gap-6 animate-fade-up">
+        <div className="rounded-full bg-ok/15 p-6">
+          <CheckCircle2 className="h-12 w-12 text-ok" />
         </div>
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold">Upload Successful!</h2>
-          <p className="text-white/40">Your video is now being transcoded. You'll be redirected shortly.</p>
+        <div className="space-y-2 max-w-md">
+          <h1 className="text-3xl font-display font-bold">
+            {result.deduped ? 'Already on the platform' : 'Upload successful'}
+          </h1>
+          <p className="text-muted">
+            {result.deduped
+              ? 'We detected this exact file already exists — opening the existing record.'
+              : 'Replicating across three regional edge nodes and archiving the original. Taking you to the watch page…'}
+          </p>
         </div>
+        <Link to={`/video/${result.videoId}`} className="btn-primary py-3 px-6">
+          <PlayCircle className="h-5 w-5" />
+          Open video
+        </Link>
       </div>
     );
   }
 
+  // ── Main upload form ────────────────────────────────────────────
   return (
-    <div className="p-8 max-w-3xl mx-auto">
-      <div className="mb-10">
-        <h1 className="text-4xl font-bold tracking-tight mb-2">Publish Content</h1>
-        <p className="text-white/40 text-lg">Upload your video to the distributed edge network.</p>
-      </div>
+    <div className="px-4 sm:px-8 py-10 max-w-3xl mx-auto">
+      <header className="mb-10 space-y-3">
+        <span className="label-eyebrow">Publish</span>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold tracking-tight">
+          Drop a video on the{' '}
+          <span className="text-brand-gradient">edge.</span>
+        </h1>
+        <p className="text-muted max-w-xl">
+          We'll transcode it to HLS, replicate every chunk across A · B · C,
+          and stash the original in durable cold storage.
+        </p>
+      </header>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Upload Zone */}
-        <div 
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
+      <form onSubmit={onSubmit} className="space-y-7">
+        {/* Drop zone */}
+        <label
+          htmlFor="file"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
           onDrop={onDrop}
           className={cn(
-            "relative group aspect-video rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-300",
-            isDragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-white/10 hover:border-white/20 bg-white/[0.02]",
-            file && "border-emerald-500/50 bg-emerald-500/5 border-solid"
+            'group block cursor-pointer relative aspect-video rounded-3xl border-2 border-dashed transition-all duration-200 overflow-hidden',
+            isDragging
+              ? 'border-primary bg-primary/5 scale-[1.005]'
+              : 'border-white/10 hover:border-white/25 bg-white/[0.025]',
+            file && !isDragging && 'border-ok/60 bg-ok/5 border-solid',
+            stage === 'uploading' && 'pointer-events-none',
           )}
         >
+          <input
+            id="file"
+            type="file"
+            className="sr-only"
+            accept={ACCEPT}
+            onChange={onPick}
+            disabled={stage === 'uploading'}
+          />
+
           {file ? (
-            <div className="flex flex-col items-center space-y-4">
-              <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center">
-                <FileVideo className="w-8 h-8 text-emerald-500" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 text-center px-6">
+              <div className="h-16 w-16 rounded-2xl bg-ok/15 flex items-center justify-center">
+                <FileVideo className="h-8 w-8 text-ok" />
               </div>
-              <div className="text-center">
-                <p className="font-semibold text-lg">{file.name}</p>
-                <p className="text-white/40 text-sm">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+              <div>
+                <p className="font-semibold text-lg max-w-md truncate">
+                  {file.name}
+                </p>
+                <p className="text-muted text-sm">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB ·{' '}
+                  {file.type || 'video'}
+                </p>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setFile(null)}
-                className="text-white/40 hover:text-red-500 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <X className="w-4 h-4" />
-                Remove
-              </button>
+              {stage === 'idle' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    reset();
+                  }}
+                  className="text-muted hover:text-danger text-sm font-medium inline-flex items-center gap-1.5"
+                >
+                  <X className="h-4 w-4" />
+                  Choose a different file
+                </button>
+              )}
             </div>
           ) : (
-            <div className="flex flex-col items-center space-y-4">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                <Upload className="w-8 h-8 text-primary" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 text-center px-6">
+              <div className="h-16 w-16 rounded-2xl bg-brand-gradient flex items-center justify-center shadow-glow-primary transition-transform group-hover:scale-110">
+                <UploadIcon className="h-7 w-7 text-white" />
               </div>
-              <div className="text-center">
-                <p className="text-xl font-semibold mb-1">Drag and drop video</p>
-                <p className="text-white/30">Support for MP4, MKV, and AVI</p>
+              <div className="space-y-1.5">
+                <p className="text-xl font-display font-bold">
+                  Drop a video, or click to browse
+                </p>
+                <p className="text-muted text-sm">
+                  MP4 · MKV · AVI · up to 600 MB
+                </p>
               </div>
-              <label className="btn-secondary mt-4 cursor-pointer">
-                <span>Browse Files</span>
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  accept="video/*" 
-                  onChange={handleFileChange} 
-                />
-              </label>
             </div>
           )}
+        </label>
+
+        {/* Title field */}
+        <div className="space-y-2">
+          <label htmlFor="title" className="label-eyebrow">
+            Title
+          </label>
+          <input
+            id="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="My distributed stream"
+            className="input-field text-lg py-3"
+            required
+            disabled={stage === 'uploading'}
+          />
         </div>
 
-        {/* Form Fields */}
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-bold uppercase tracking-widest text-white/30">Video Title</label>
-            <input 
-              type="text" 
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. My Distributed Stream"
-              className="input-field w-full text-lg py-3"
-              required
-              disabled={isUploading}
-            />
+        {/* Progress + status */}
+        {(stage === 'uploading' || stage === 'processing') && (
+          <ProgressPanel stage={stage} progress={progress} fileName={file?.name} />
+        )}
+
+        {error && (
+          <div className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <span>{error}</span>
           </div>
+        )}
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-500">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <p className="text-sm font-medium">{error}</p>
-            </div>
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={!file || !title.trim() || stage === 'uploading' || stage === 'processing'}
+          className="btn-primary w-full py-4 text-base"
+        >
+          {stage === 'uploading' || stage === 'processing' ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              {stage === 'uploading' ? 'Uploading…' : 'Replicating to edge…'}
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-5 w-5" />
+              Publish to StreamFlix
+            </>
           )}
+        </button>
 
-          <button 
-            type="submit" 
-            disabled={!file || !title || isUploading}
-            className={cn(
-              "btn-primary w-full py-4 text-lg shadow-xl shadow-primary/20",
-              (!file || !title || isUploading) && "opacity-50 cursor-not-allowed grayscale"
-            )}
-          >
-            {isUploading ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin" />
-                Publishing to Edge...
-              </>
-            ) : (
-              "Publish Video"
-            )}
-          </button>
-        </div>
+        {/* Trust strip */}
+        <ul className="grid sm:grid-cols-3 gap-3 pt-2">
+          <TrustItem
+            icon={<Globe className="h-4 w-4" />}
+            text="3-region replication"
+          />
+          <TrustItem
+            icon={<ShieldCheck className="h-4 w-4" />}
+            text="Durable cold archive"
+          />
+          <TrustItem
+            icon={<Sparkles className="h-4 w-4" />}
+            text="Adaptive HLS at the edge"
+          />
+        </ul>
       </form>
     </div>
   );
 };
+
+const ProgressPanel: React.FC<{
+  stage: Stage;
+  progress: number;
+  fileName?: string;
+}> = ({ stage, progress, fileName }) => (
+  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5 space-y-3">
+    <div className="flex items-center justify-between text-sm">
+      <span className="font-medium truncate max-w-[60%]">
+        {fileName || 'your file'}
+      </span>
+      <span className="text-muted tabular-nums">
+        {stage === 'uploading' ? `${progress}%` : 'Transcoding…'}
+      </span>
+    </div>
+    <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden">
+      {stage === 'uploading' ? (
+        <div
+          className="h-full bg-brand-gradient transition-all duration-200"
+          style={{ width: `${progress}%` }}
+        />
+      ) : (
+        <div className="h-full w-1/3 bg-brand-gradient rounded-full animate-flow-right" />
+      )}
+    </div>
+    <p className="text-xs text-muted">
+      {stage === 'uploading'
+        ? 'Streaming bytes to the ingestion gateway…'
+        : 'Server is transcoding to HLS and replicating across A · B · C. This continues in the background — you can leave this page.'}
+    </p>
+  </div>
+);
+
+const TrustItem: React.FC<{ icon: React.ReactNode; text: string }> = ({
+  icon,
+  text,
+}) => (
+  <li className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-xs text-white/70">
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-brand-gradient text-white">
+      {icon}
+    </span>
+    <span className="font-medium">{text}</span>
+  </li>
+);
 
 export default UploadPage;

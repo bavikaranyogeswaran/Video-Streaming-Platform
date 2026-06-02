@@ -1,5 +1,11 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from 'react-router-dom';
 import { Layout } from './components/Layout.tsx';
 import { useAuthStore } from './store/authStore.ts';
 
@@ -13,7 +19,18 @@ const HealthPage = React.lazy(() => import('./pages/HealthPage.tsx'));
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { token } = useAuthStore();
-  if (!token) return <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (!token) {
+    // Preserve where the user was trying to go so LoginPage can bounce
+    // them back there after a successful sign-in.
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location.pathname + location.search }}
+        replace
+      />
+    );
+  }
   return <>{children}</>;
 };
 
