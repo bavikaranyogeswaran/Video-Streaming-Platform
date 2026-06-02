@@ -169,6 +169,16 @@ export class VideosService {
     await this.cacheManager.del(`video:${id}`);
   }
 
+  // SET S3 KEY: Records the durable-archive object key (MinIO/S3)
+  // Why: enables disaster recovery — if all 3 hot replicas lose their
+  // volumes, the original can still be fetched from S3 and re-transcoded.
+  async setS3Key(id: string, key: string): Promise<void> {
+    const videoKey = `video:${id}`;
+    await this.redisService.hset(videoKey, 's3Key', key);
+    await this.cacheManager.del('videos:all');
+    await this.cacheManager.del(`video:${id}`);
+  }
+
   // REPAIR: Triggers a manual re-replication to a specific node
   async repair(id: string, nodeLabel: string): Promise<boolean> {
     // 1. [VALIDATION] Ensure video exists

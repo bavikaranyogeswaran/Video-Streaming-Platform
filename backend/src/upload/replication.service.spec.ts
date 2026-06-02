@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ReplicationService } from './replication.service';
+import {
+  ReplicationService,
+  QuorumNotMetError,
+} from './replication.service';
 import { LockService } from '../redis/lock.service';
 import axios from 'axios';
 import * as fs from 'fs';
@@ -18,6 +21,7 @@ describe('ReplicationService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReplicationService,
@@ -39,35 +43,62 @@ describe('ReplicationService', () => {
   });
 
   describe('replicate', () => {
-    it('should successfully replicate to primary nodes', async () => {
+    it('returns all three labels when every node accepts every segment', async () => {
       mockedFs.readdirSync.mockReturnValue(['init.mp4', '0.m4s'] as any);
       mockedAxios.post.mockResolvedValue({ status: 200 });
 
       const result = await service.replicate('video-123', '/tmp/hls');
 
-      expect(result).toContain('A');
-      expect(result).toContain('B');
+      expect(result).toEqual(['A', 'B', 'C']);
       expect(lockService.acquire).toHaveBeenCalled();
       expect(mockLock.release).toHaveBeenCalled();
     });
 
-    it('should handle partial failures during replication', async () => {
+    it('meets quorum (2 of 3) when one node fails — C surfaces in the result list', async () => {
       mockedFs.readdirSync.mockReturnValue(['init.mp4'] as any);
 
-      // Node A fails, Node B succeeds
+      // Node A fails, B and C succeed
       mockedAxios.post
-        .mockRejectedValueOnce(new Error('Network Error')) // Node A
-        .mockResolvedValueOnce({ status: 200 }); // Node B
+        .mockRejectedValueOnce(new Error('Network Error')) // A
+        .mockResolvedValueOnce({ status: 200 }) // B
+        .mockResolvedValueOnce({ status: 200 }); // C
 
       const result = await service.replicate('video-123', '/tmp/hls');
 
       expect(result).not.toContain('A');
       expect(result).toContain('B');
+      expect(result).toContain('C');
+      expect(mockLock.release).toHaveBeenCalled();
+    });
+
+    it('throws QuorumNotMetError when only one node succeeds', async () => {
+      mockedFs.readdirSync.mockReturnValue(['init.mp4'] as any);
+
+      // Only B succeeds
+      mockedAxios.post
+        .mockRejectedValueOnce(new Error('A offline')) // A
+        .mockResolvedValueOnce({ status: 200 }) // B
+        .mockRejectedValueOnce(new Error('C offline')); // C
+
+      await expect(service.replicate('video-123', '/tmp/hls')).rejects.toThrow(
+        QuorumNotMetError,
+      );
+      // Lock must still be released
+      expect(mockLock.release).toHaveBeenCalled();
+    });
+
+    it('throws when staging dir is empty', async () => {
+      mockedFs.readdirSync.mockReturnValue([] as any);
+
+      await expect(service.replicate('video-123', '/tmp/hls')).rejects.toThrow(
+        /No HLS segments/,
+      );
+      expect(mockLock.release).toHaveBeenCalled();
     });
   });
 
   describe('repair', () => {
-    it('should successfully trigger repair on a specific node', async () => {
+    it('returns true when repair succeeds', async () => {
       mockedFs.readdirSync.mockReturnValue(['test.ts'] as any);
       mockedAxios.post.mockResolvedValue({ status: 200 });
 
@@ -81,7 +112,7 @@ describe('ReplicationService', () => {
       expect(mockedAxios.post).toHaveBeenCalled();
     });
 
-    it('should return false if repair fails', async () => {
+    it('returns false when repair fails', async () => {
       mockedFs.readdirSync.mockReturnValue(['test.ts'] as any);
       mockedAxios.post.mockRejectedValue(new Error('Storage node offline'));
 

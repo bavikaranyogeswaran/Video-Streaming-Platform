@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   # ────────────────────────────────────────────────────────────────
@@ -82,8 +80,23 @@ services:
       - STORAGE_NODE_A=http://storage-node-a:4001
       - STORAGE_NODE_B=http://storage-node-b:4001
       - STORAGE_NODE_C=http://storage-node-c:4001
+      - REPLICATION_MIN_REPLICAS=2
+      - REPLICATION_NODE_TIMEOUT_MS=60000
+      # MinIO (S3-compatible) durable archive for raw originals
+      - S3_ARCHIVE_ENABLED=true
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=us-east-1
+      - S3_ACCESS_KEY_ID=vsp_minio_admin
+      - S3_SECRET_ACCESS_KEY=vsp_minio_change_in_prod_2024
+      - S3_BUCKET=vsp-originals
+      - S3_FORCE_PATH_STYLE=true
+    volumes:
+      # Persisted staging so crash mid-transcode/replicate can be recovered
+      - backend-staging:/tmp/uploads
     depends_on:
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     restart: always
     deploy:
@@ -97,6 +110,56 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
+  # MINIO — S3-compatible durable archive for raw uploaded originals
+  # Cold tier: if all 3 hot storage nodes lose their volumes, originals
+  # can be re-transcoded from here. Console UI on :9001.
+  # ────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: vsp-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    environment:
+      - MINIO_ROOT_USER=vsp_minio_admin
+      - MINIO_ROOT_PASSWORD=vsp_minio_change_in_prod_2024
+    volumes:
+      - minio-data:/data
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - vsp-network
+
+  # One-shot job: create the bucket if it doesn't exist yet
+  minio-init:
+    image: minio/mc:latest
+    container_name: vsp-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set vsp http://minio:9000 vsp_minio_admin vsp_minio_change_in_prod_2024 &&
+      mc mb -p vsp/vsp-originals || true &&
+      mc anonymous set download vsp/vsp-originals || true &&
+      echo 'bucket vsp-originals ready'
+      "
+    restart: "no"
     networks:
       - vsp-network
 
@@ -425,5 +488,7 @@ volumes:
   storage-a:       # Storage Node A (Asia) videos
   storage-b:       # Storage Node B (EU) videos
   storage-c:       # Storage Node C (US) videos
+  backend-staging: # Persisted backend /tmp/uploads — survives crashes for recovery
+  minio-data:      # MinIO durable archive of raw originals
   prometheus-data: # Metrics history
   grafana-data:    # Dashboard configurations
