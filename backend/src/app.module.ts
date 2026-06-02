@@ -20,13 +20,19 @@ import { UploadModule } from './upload/upload.module';
 import { UsersModule } from './users/users.module';
 import { User } from './users/user.entity';
 import { CreateUsersTable1748000000000 } from './database/migrations/1748000000000-CreateUsersTable';
+import { AddEmailToUsers1780411963887 } from './database/migrations/1780411963887-AddEmailToUsers';
+import { MailModule } from './mail/mail.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { MetricsService } from './common/metrics/metrics.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   // [NESTJS] Aggregation of core infrastructure and business features
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     // 1. [SECURITY] Rate Limiting Configuration
     // Why: Protects the API from denial-of-service and brute-force attacks.
     ThrottlerModule.forRoot([
@@ -56,7 +62,7 @@ import { MetricsService } from './common/metrics/metrics.service';
       password: process.env.POSTGRES_PASSWORD || 'vsp_pg_change_in_prod_2024',
       database: process.env.POSTGRES_DB || 'vsp',
       entities: [User],
-      migrations: [CreateUsersTable1748000000000],
+      migrations: [CreateUsersTable1748000000000, AddEmailToUsers1780411963887],
       synchronize: false,
       migrationsRun: true,
       logging: process.env.TYPEORM_LOGGING === 'true',
@@ -66,6 +72,7 @@ import { MetricsService } from './common/metrics/metrics.service';
     AuthModule,
     VideosModule,
     UploadModule,
+    MailModule,
   ],
   // [NESTJS] System-level health and root endpoints
   controllers: [AppController],

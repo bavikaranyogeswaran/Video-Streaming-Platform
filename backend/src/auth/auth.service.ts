@@ -12,7 +12,10 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../users/users.service';
+import { RedisService } from '../redis/redis.service';
+import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -23,6 +26,8 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly redisService: RedisService,
+    private readonly mailService: MailService,
   ) {}
 
   /**
@@ -31,10 +36,15 @@ export class AuthService {
    * to pre-check existence.
    */
   async register(registerDto: RegisterDto) {
-    const { username, password } = registerDto;
+    const { username, email, password } = registerDto;
     const hashedPassword = await bcrypt.hash(password, this.BCRYPT_ROUNDS);
-    await this.usersService.create(username, hashedPassword);
-    return { message: 'User registered successfully' };
+    const user = await this.usersService.create(username, email, hashedPassword);
+    
+    const token = uuidv4();
+    await this.redisService.set(`verify_token:${token}`, user.id, 86400);
+    await this.mailService.sendVerificationEmail(email, token);
+
+    return { message: 'User registered successfully. Please check your email to verify your account.' };
   }
 
   /**
@@ -54,10 +64,26 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = { sub: user.username, username: user.username };
+    if (!user.isVerified) {
+      throw new UnauthorizedException('Please verify your email before logging in');
+    }
+
+    const payload = { sub: user.id, username: user.username };
     return {
       access_token: await this.jwtService.signAsync(payload),
       username: user.username,
     };
+  }
+
+  async verifyEmail(token: string) {
+    const userId = await this.redisService.get(`verify_token:${token}`);
+    if (!userId) {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+    
+    await this.usersService.markAsVerified(userId);
+    await this.redisService.del(`verify_token:${token}`);
+    
+    return { message: 'Email verified successfully. You can now log in.' };
   }
 }

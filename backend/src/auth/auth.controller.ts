@@ -6,7 +6,7 @@
 // establishment via secure login.
 // =================================================================================
 
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -39,5 +39,16 @@ export class AuthController {
   async login(@Body() loginDto: LoginDto) {
     // 1. [SECURITY] Validate credentials and generate JWT session
     return this.authService.login(loginDto);
+  }
+
+  @Get('verify')
+  @ApiOperation({ summary: 'Verify email address' })
+  @ApiResponse({ status: 200, description: 'Email successfully verified' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired token' })
+  async verifyEmail(@Query('token') token: string) {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    return this.authService.verifyEmail(token);
   }
 }

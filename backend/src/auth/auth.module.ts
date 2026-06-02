@@ -13,11 +13,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { RedisModule } from '../redis/redis.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
     // User persistence (Postgres) — system of record for accounts
     UsersModule,
+    RedisModule,
+    MailModule,
     // [NESTJS] Integration with Passport security middleware
     PassportModule,
     // 1. [SECURITY] Configure the JSON Web Token engine

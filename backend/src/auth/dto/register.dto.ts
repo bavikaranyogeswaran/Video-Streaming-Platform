@@ -6,7 +6,7 @@
 // during the registration phase.
 // =================================================================================
 
-import { IsString, MinLength, IsNotEmpty } from 'class-validator';
+import { IsString, MinLength, IsNotEmpty, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -15,6 +15,11 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   username: string;
+
+  @ApiProperty({ example: 'johndoe@example.com', description: 'User email address' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
 
   // 2. [VALIDATION] Enforce minimum security length for passwords
   @ApiProperty({

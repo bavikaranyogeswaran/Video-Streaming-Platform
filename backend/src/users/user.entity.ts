@@ -25,6 +25,13 @@ export class User {
   @Column({ type: 'varchar', length: 32 })
   username!: string;
 
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 255 })
+  email!: string;
+
+  @Column({ type: 'boolean', default: false })
+  isVerified!: boolean;
+
   // bcrypt hash — never expose this in API responses.
   @Column({ type: 'varchar', length: 100, select: false })
   password!: string;

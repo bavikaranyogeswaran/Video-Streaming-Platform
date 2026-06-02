@@ -39,9 +39,9 @@ export class UsersService {
    * index on username, surface that as a 409 ConflictException — the only
    * race-condition-safe way to do this check.
    */
-  async create(username: string, hashedPassword: string): Promise<User> {
+  async create(username: string, email: string, hashedPassword: string): Promise<User> {
     try {
-      const user = this.users.create({ username, password: hashedPassword });
+      const user = this.users.create({ username, email, password: hashedPassword });
       return await this.users.save(user);
     } catch (err) {
       if (
@@ -49,10 +49,14 @@ export class UsersService {
         // Postgres unique_violation
         (err as any).code === '23505'
       ) {
-        throw new ConflictException('Username already exists');
+        throw new ConflictException('Username or email already exists');
       }
       this.logger.error(`Unexpected error creating user: ${(err as Error).message}`);
       throw err;
     }
+  }
+
+  async markAsVerified(userId: string): Promise<void> {
+    await this.users.update(userId, { isVerified: true });
   }
 }
