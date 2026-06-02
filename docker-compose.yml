@@ -125,6 +125,9 @@ services:
       - S3_SECRET_ACCESS_KEY=vsp_minio_change_in_prod_2024
       - S3_BUCKET=vsp-originals
       - S3_FORCE_PATH_STYLE=true
+      # Gmail SMTP for email verification (values loaded from .env file)
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
     volumes:
       # Persisted staging so crash mid-transcode/replicate can be recovered
       - backend-staging:/tmp/uploads
