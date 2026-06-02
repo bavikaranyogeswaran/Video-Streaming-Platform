@@ -37,6 +37,36 @@ services:
       - vsp-network
 
   # ────────────────────────────────────────────────────────────────
+  # POSTGRES — System of record for user accounts
+  # Auth data deserves a proper relational store with UNIQUE constraints,
+  # migrations, and PITR-friendly backups. Video metadata stays in Redis.
+  # ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: vsp-postgres
+    environment:
+      - POSTGRES_USER=vsp
+      - POSTGRES_PASSWORD=vsp_pg_change_in_prod_2024
+      - POSTGRES_DB=vsp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vsp -d vsp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vsp-network
+
+  # ────────────────────────────────────────────────────────────────
   # REDIS — Metadata Cache + Health State (AOF persistent)
   # ────────────────────────────────────────────────────────────────
   redis:
@@ -75,6 +105,11 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - REDIS_URL=redis://redis:6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=vsp
+      - POSTGRES_PASSWORD=vsp_pg_change_in_prod_2024
+      - POSTGRES_DB=vsp
       - JWT_SECRET=vsp_super_secret_jwt_key_change_in_prod_2024
       - JWT_EXPIRES_IN=24h
       - STORAGE_NODE_A=http://storage-node-a:4001
@@ -95,6 +130,8 @@ services:
       - backend-staging:/tmp/uploads
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -484,6 +521,7 @@ networks:
 # VOLUMES (persistent across container restarts)
 # ────────────────────────────────────────────────────────────────
 volumes:
+  postgres-data:   # User accounts (system of record)
   redis-data:      # Redis AOF data
   storage-a:       # Storage Node A (Asia) videos
   storage-b:       # Storage Node B (EU) videos

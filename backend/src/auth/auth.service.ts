@@ -1,77 +1,59 @@
 // =================================================================================
 // AUTH SERVICE (The Identity Provider)
 // =================================================================================
-// This service handles user registration and credential verification.
-// It manages password security via hashing and generates JWT
-// tokens for authenticated sessions.
+// User credentials live in Postgres (UsersService) — a relational store gives
+// us a real UNIQUE constraint on username, eliminating the race the previous
+// Redis-backed EXISTS-then-HSET pattern had. JWT issuance stays here.
 // =================================================================================
 
 import {
   Injectable,
   UnauthorizedException,
-  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { RedisService } from '../redis/redis.service';
+import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
-  // [NESTJS] Injecting Redis for user persistence and JWT for token generation
+  private readonly BCRYPT_ROUNDS = 10;
+
   constructor(
-    private readonly redisService: RedisService,
+    private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
   ) {}
 
-  // REGISTER: Creates a new user identity in the distributed store
+  /**
+   * Hash the password, insert a new users row. UsersService.create translates
+   * a Postgres unique-violation into 409 ConflictException — we don't need
+   * to pre-check existence.
+   */
   async register(registerDto: RegisterDto) {
     const { username, password } = registerDto;
-    const userKey = `user:${username}`;
-
-    // 1. [DB] Check for username collision in Redis
-    // [DB] EXISTS user:{username}
-    const existingUser = await this.redisService.exists(userKey);
-    if (existingUser) {
-      throw new ConflictException('Username already exists');
-    }
-
-    // 2. [SECURITY] Hash password using bcrypt for secure storage
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // 3. [DB] Persist user profile as a Redis Hash
-    // [DB] HSET user:{username} -> {username, password, createdAt}
-    await this.redisService.hset(userKey, 'username', username);
-    await this.redisService.hset(userKey, 'password', hashedPassword);
-    await this.redisService.hset(
-      userKey,
-      'createdAt',
-      new Date().toISOString(),
-    );
-
+    const hashedPassword = await bcrypt.hash(password, this.BCRYPT_ROUNDS);
+    await this.usersService.create(username, hashedPassword);
     return { message: 'User registered successfully' };
   }
 
-  // LOGIN: Verifies credentials and issues an access token
+  /**
+   * Verify credentials and mint a JWT. Generic 401 on any failure so we
+   * don't leak whether the username exists.
+   */
   async login(loginDto: LoginDto) {
     const { username, password } = loginDto;
-    const userKey = `user:${username}`;
 
-    // 1. [DB] Fetch user profile from Redis
-    // [DB] HGETALL user:{username}
-    const user = await this.redisService.hgetall(userKey);
-    if (!user || !user.username) {
+    const user = await this.usersService.findByUsernameWithPassword(username);
+    if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // 2. [SECURITY] Compare provided password with hashed version
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // 3. [SECURITY] Generate signed JWT payload for the user session
     const payload = { sub: user.username, username: user.username };
     return {
       access_token: await this.jwtService.signAsync(payload),

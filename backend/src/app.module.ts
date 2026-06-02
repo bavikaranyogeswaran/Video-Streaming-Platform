@@ -10,12 +10,16 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { VideosModule } from './videos/videos.module';
 import { UploadModule } from './upload/upload.module';
+import { UsersModule } from './users/users.module';
+import { User } from './users/user.entity';
+import { CreateUsersTable1748000000000 } from './database/migrations/1748000000000-CreateUsersTable';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { MetricsService } from './common/metrics/metrics.service';
@@ -38,7 +42,27 @@ import { MetricsService } from './common/metrics/metrics.service';
       max: 100, // Max items in memory
       isGlobal: true,
     }),
+    // 3. [DB] Postgres connection for relational data (users today, more later)
+    //
+    // synchronize is OFF — the schema is owned by migrations under
+    // src/database/migrations. migrationsRun: true applies any pending
+    // migrations at boot, so a freshly-started container always lands on
+    // the latest schema before the app accepts traffic.
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.POSTGRES_HOST || 'localhost',
+      port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
+      username: process.env.POSTGRES_USER || 'vsp',
+      password: process.env.POSTGRES_PASSWORD || 'vsp_pg_change_in_prod_2024',
+      database: process.env.POSTGRES_DB || 'vsp',
+      entities: [User],
+      migrations: [CreateUsersTable1748000000000],
+      synchronize: false,
+      migrationsRun: true,
+      logging: process.env.TYPEORM_LOGGING === 'true',
+    }),
     RedisModule,
+    UsersModule,
     AuthModule,
     VideosModule,
     UploadModule,

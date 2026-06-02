@@ -12,9 +12,12 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
+    // User persistence (Postgres) — system of record for accounts
+    UsersModule,
     // [NESTJS] Integration with Passport security middleware
     PassportModule,
     // 1. [SECURITY] Configure the JSON Web Token engine
